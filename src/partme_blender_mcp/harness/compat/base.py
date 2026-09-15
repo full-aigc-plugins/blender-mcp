@@ -36,7 +36,7 @@ class BlenderCompatibilityAdapter:
         """
         raise HarnessError(
             'CAPABILITY_UNAVAILABLE',
-            f'create_compositor_tree is not supported in this Blender version',
+            'create_compositor_tree is not supported in this Blender version',
         )
 
     def configure_file_output(self, node, directory, base_name):

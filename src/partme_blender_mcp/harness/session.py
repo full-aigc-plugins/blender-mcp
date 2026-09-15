@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import time
 from collections import OrderedDict
 from collections.abc import Callable
 
@@ -11,6 +12,29 @@ from .execution_policy import ExecutionMode, ExecutionPolicy
 import math
 from .errors import HarnessError
 from .protocol import CommandRequest, PROTOCOL_VERSION
+
+
+PENDING_AUTHORIZATION_LIMIT = 10
+PENDING_AUTHORIZATION_TTL_SECONDS = 300
+LOCAL_APPROVAL_TTL_SECONDS = 120
+DENIED_REQUEST_LIMIT = 50
+# Denials raised before dispatch have no side effect, so the same request id must be
+# retryable: local approval is granted for that exact id and the client re-sends it.
+RETRYABLE_DENIAL_CODES = {"AUTHORIZATION_REQUIRED"}
+
+
+def _argument_summary(arguments: dict) -> str:
+    """Bounded, secret-free summary of a request for the local approval UI."""
+    parts = []
+    for key in sorted(arguments):
+        if key.startswith("_"):
+            continue
+        value = arguments[key]
+        text = f"<{type(value).__name__}>" if isinstance(value, (dict, list)) else str(value)
+        parts.append(f"{key}={text[:48]}")
+        if len(parts) == 3:
+            break
+    return "; ".join(parts)
 
 
 READ_ONLY_COMMANDS = {
@@ -79,6 +103,9 @@ class HarnessSession:
         self.on_update = None
         self._active_transactions = set()
         self._invalid_transactions = set()
+        self._pending_authorizations: OrderedDict[str, dict] = OrderedDict()
+        self._local_approvals: dict[tuple[str, str], float] = {}
+        self._denied_requests: OrderedDict[str, float] = OrderedDict()
         self._stage = "Ready"
         self._progress = None
         self._last_command = None
@@ -128,10 +155,24 @@ class HarnessSession:
                     retryable=True,
                 )
             automatic_export = request.command == "export.file" and self.execution_policy.permits_fresh_export(request.arguments)
-            if request.command in GATED_COMMANDS and not automatic_export and not self.authorization.verify(
-                request.authorization, request.request_id, request.command
-            ):
-                raise HarnessError("AUTHORIZATION_REQUIRED", f"authorization required for {request.command}")
+            if request.command in GATED_COMMANDS and not automatic_export:
+                if self.authorization.verify(request.authorization, request.request_id, request.command):
+                    pass
+                elif self._consume_local_approval(request.request_id, request.command):
+                    self._record_local_approval_use(request)
+                else:
+                    if self._is_locally_denied(request.request_id):
+                        raise HarnessError(
+                            "AUTHORIZATION_REQUIRED",
+                            f"{request.command} was denied in Blender; submit a new request id to ask again",
+                        )
+                    self._remember_pending_authorization(request)
+                    raise HarnessError(
+                        "AUTHORIZATION_REQUIRED",
+                        f"authorization required for {request.command}; a user must approve this exact "
+                        "request id in Blender, then retry the same request id",
+                        retryable=True,
+                    )
             if automatic_export and self.transactions is None:
                 raise HarnessError("MILESTONE_NOT_APPROVED", "automatic export requires a committed transaction")
             if request.command == "export.file" and self.transactions is not None:
@@ -176,9 +217,15 @@ class HarnessSession:
             self._sync_rolled_back_revision(payload)
             response = self._error_response(request_id, HarnessError("COMMAND_FAILED", str(exc)))
             self._last_error = {"code": "COMMAND_FAILED", "message": str(exc)}
-        self._remember(request_id, response)
+        if not self._is_retryable_denial(response):
+            self._remember(request_id, response)
         self._record_audit(payload, response)
         return copy.deepcopy(response)
+
+    @staticmethod
+    def _is_retryable_denial(response: dict) -> bool:
+        return (response.get("status") == "failed"
+                and response.get("error", {}).get("code") in RETRYABLE_DENIAL_CODES)
 
     def _error_response(self, request_id: str, error: HarnessError) -> dict:
         return {
@@ -241,6 +288,8 @@ class HarnessSession:
             self._invalid_transactions.update(self._active_transactions)
             self._active_transactions.clear()
             self._approved_snapshots.clear()
+            # A user takeover invalidates approvals granted for the pre-takeover scene.
+            self._local_approvals.clear()
             if self.on_pause:
                 self.on_pause()
             self._record_local_control("session.pause", source)
@@ -259,6 +308,9 @@ class HarnessSession:
 
     def revoke(self):
         self.revoked = True
+        self._pending_authorizations.clear()
+        self._local_approvals.clear()
+        self._denied_requests.clear()
         self.pause(source="runtime")
 
     def status(self):
@@ -267,7 +319,93 @@ class HarnessSession:
                 "revoked": self.revoked, "needsInspection": self.needs_inspection,
                 "stage": self._stage, "progress": self._progress,
                 "lastCommand": self._last_command, "changedObjects": list(self._changed_objects),
+                "pendingAuthorizations": len(self._pending_authorizations),
                 "lastError": copy.deepcopy(self._last_error)}
+
+    def pending_authorizations(self) -> list[dict]:
+        """Gated requests refused for lack of approval, for the trusted local UI."""
+        self._prune_authorizations()
+        return [copy.deepcopy(entry) for entry in self._pending_authorizations.values()]
+
+    def approve_pending(self, request_id: str, *, ttl_seconds: int = LOCAL_APPROVAL_TTL_SECONDS,
+                        source: str = "local_ui") -> dict:
+        """Mint a local approval for one refused request. Only callable in-process by local UI.
+
+        The claim never leaves this process: the client succeeds by retrying the same
+        request id and command, so a generic MCP client can never mint its own approval.
+        """
+        self._prune_authorizations()
+        entry = self._pending_authorizations.pop(request_id, None)
+        if entry is None:
+            raise HarnessError("UNKNOWN_PENDING_AUTHORIZATION", "no pending gated request with that id")
+        ttl = min(300, max(1, int(ttl_seconds)))
+        self._local_approvals[(request_id, entry["command"])] = time.time() + ttl
+        self._audit.append({"command": entry["command"], "requestId": request_id, "source": source,
+                            "authorization": "approved_locally", "status": "approved",
+                            "sceneRevision": self.scene_revision, "ttlSeconds": ttl,
+                            "executionPolicy": self.execution_policy.to_audit_dict()})
+        self._notify()
+        return {"requestId": request_id, "command": entry["command"], "ttlSeconds": ttl}
+
+    def deny_pending(self, request_id: str, *, source: str = "local_ui") -> dict:
+        self._prune_authorizations()
+        entry = self._pending_authorizations.pop(request_id, None)
+        if entry is None:
+            raise HarnessError("UNKNOWN_PENDING_AUTHORIZATION", "no pending gated request with that id")
+        self._denied_requests[request_id] = time.time()
+        self._denied_requests.move_to_end(request_id)
+        while len(self._denied_requests) > DENIED_REQUEST_LIMIT:
+            self._denied_requests.popitem(last=False)
+        self._audit.append({"command": entry["command"], "requestId": request_id, "source": source,
+                            "authorization": "denied_locally", "status": "denied",
+                            "sceneRevision": self.scene_revision,
+                            "executionPolicy": self.execution_policy.to_audit_dict()})
+        self._notify()
+        return {"requestId": request_id, "command": entry["command"]}
+
+    def _prune_authorizations(self) -> None:
+        now = time.time()
+        for key, expires_at in list(self._local_approvals.items()):
+            if expires_at < now:
+                self._local_approvals.pop(key, None)
+        for request_id, entry in list(self._pending_authorizations.items()):
+            if now - entry["requestedAt"] > PENDING_AUTHORIZATION_TTL_SECONDS:
+                self._pending_authorizations.pop(request_id, None)
+        for request_id, denied_at in list(self._denied_requests.items()):
+            if now - denied_at > PENDING_AUTHORIZATION_TTL_SECONDS:
+                self._denied_requests.pop(request_id, None)
+
+    def _is_locally_denied(self, request_id: str) -> bool:
+        self._prune_authorizations()
+        return request_id in self._denied_requests
+
+    def _consume_local_approval(self, request_id: str, command: str) -> bool:
+        self._prune_authorizations()
+        expires_at = self._local_approvals.pop((request_id, command), None)
+        if expires_at is None or expires_at < time.time():
+            return False
+        # The client moved on with this request id; drop any stale pending row for it.
+        self._pending_authorizations.pop(request_id, None)
+        return True
+
+    def _remember_pending_authorization(self, request: CommandRequest) -> None:
+        self._pending_authorizations[request.request_id] = {
+            "requestId": request.request_id,
+            "command": request.command,
+            "summary": _argument_summary(request.arguments),
+            "requestedAt": time.time(),
+            "sceneRevision": self.scene_revision,
+        }
+        self._pending_authorizations.move_to_end(request.request_id)
+        while len(self._pending_authorizations) > PENDING_AUTHORIZATION_LIMIT:
+            self._pending_authorizations.popitem(last=False)
+        self._notify()
+
+    def _record_local_approval_use(self, request: CommandRequest) -> None:
+        self._audit.append({"command": request.command, "requestId": request.request_id,
+                            "authorization": "used_local_approval", "status": "succeeded",
+                            "source": "local_ui", "sceneRevision": self.scene_revision,
+                            "executionPolicy": self.execution_policy.to_audit_dict()})
 
     def _handle_control(self, request):
         if request.command == "session.set_progress":
@@ -286,8 +424,12 @@ class HarnessSession:
             if request.command == "session.pause":
                 self.pause(source="command")
             elif request.command == "session.resume":
-                if not self.authorization.verify(request.authorization, request.request_id, request.command):
-                    raise HarnessError("AUTHORIZATION_REQUIRED", "resume requires user authorization")
+                if not self.authorization.verify(request.authorization, request.request_id, request.command) and not self._consume_local_approval(request.request_id, request.command):
+                    self._remember_pending_authorization(request)
+                    raise HarnessError(
+                        "AUTHORIZATION_REQUIRED",
+                        "resume requires user authorization; a user must approve this exact request id in Blender",
+                    )
                 self.resume_local(source="command")
         return {"protocolVersion": PROTOCOL_VERSION, "requestId": request.request_id, "status": "succeeded",
                 "sceneRevision": self.scene_revision, "changedObjects": [], "warnings": [], "result": self.status()}

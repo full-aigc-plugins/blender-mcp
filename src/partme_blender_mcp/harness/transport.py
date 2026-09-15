@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import socket
@@ -11,10 +12,21 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+# macOS caps sun_path at 104 bytes and the per-user temp directory already consumes
+# about half of it, so a readable session name cannot be used verbatim as a socket name.
+SOCKET_PATH_LIMIT = 100
+
+
 @dataclass(frozen=True)
 class Endpoint:
     kind: str
     address: object
+
+
+def unix_socket_path(runtime_dir: str, session_id: str) -> Path:
+    """Short, collision-resistant socket path; the descriptor carries the real session id."""
+    digest = hashlib.sha1(session_id.encode("utf-8")).hexdigest()[:12]
+    return Path(runtime_dir) / f"partme-blender-{digest}.sock"
 
 
 def choose_endpoint(platform: str, *, session_id: str, runtime_dir: str) -> Endpoint:
@@ -22,7 +34,13 @@ def choose_endpoint(platform: str, *, session_id: str, runtime_dir: str) -> Endp
     if platform == "win32":
         return Endpoint("pipe", rf"\\.\pipe\partme-blender-{safe_id}")
     if platform == "darwin":
-        return Endpoint("unix", str(Path(runtime_dir) / f"partme-blender-{safe_id}.sock"))
+        path = unix_socket_path(runtime_dir, session_id)
+        if len(str(path).encode("utf-8")) > SOCKET_PATH_LIMIT:
+            raise ValueError(
+                f"the Unix socket path is too long ({len(str(path).encode('utf-8'))} bytes); "
+                "set PARTME_BLENDER_RUNTIME_DIR to a shorter directory"
+            )
+        return Endpoint("unix", str(path))
     return Endpoint("tcp", ("127.0.0.1", 0))
 
 

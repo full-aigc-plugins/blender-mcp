@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .errors import HarnessError
 from .milestone import build_milestone_receipt, view_positions
 
 

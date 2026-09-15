@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,18 +8,21 @@ version = "0.1.0"
 description = "Secure cross-client MCP runtime and Blender Add-on"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 authors = [{name = "PartMe.AI"}]
 keywords = ["blender", "mcp", "3d", "automation"]
 classifiers = [
   "Development Status :: 3 - Alpha",
-  "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13"
 ]
 dependencies = []
+
+[project.optional-dependencies]
+dev = ["ruff==0.16.7"]
 
 [project.urls]
 Homepage = "https://github.com/partme-ai/blender-mcp"
@@ -30,3 +33,16 @@ partme-blender-mcp = "partme_blender_mcp.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+src = ["src", "addon", "scripts", "tests"]
+
+[tool.ruff.lint]
+# Migrated Harness code keeps a dense one-statement-per-branch style, so E701/E702 are
+# deferred rather than reformatted in bulk. The deferred bugbear rules need per-site
+# reasoning (zip strictness, loop-variable intent, exception chaining), so they are
+# listed here instead of being applied blindly. See CONTRIBUTING.md.
+select = ["E4", "E7", "E9", "F", "B"]
+ignore = ["E701", "E702", "B905", "B007", "B904"]

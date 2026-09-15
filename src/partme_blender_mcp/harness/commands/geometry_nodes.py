@@ -61,7 +61,7 @@ class GeometryNodeCommands:
         group=self._group(arguments.get('groupName'));source=group.nodes.get(require_name(arguments.get('fromNode')));target=group.nodes.get(require_name(arguments.get('toNode')))
         if source is None or target is None:raise HarnessError('NODE_NOT_FOUND','source or target node was not found')
         output=self._socket(source.outputs,require_name(arguments.get('fromSocket')));input_socket=self._socket(target.inputs,require_name(arguments.get('toSocket')))
-        try:link=group.links.new(output,input_socket)
+        try:group.links.new(output,input_socket)
         except Exception as exc:raise HarnessError('OPERATION_FAILED','socket types are incompatible') from exc
         return {'changedObjects':[],'result':{'groupName':group.name,'from':f'{source.name}.{output.identifier}','to':f'{target.name}.{input_socket.identifier}'}}
     def set_node_input(self,arguments):

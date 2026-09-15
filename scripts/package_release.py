@@ -22,7 +22,7 @@ FIXED_ZIP_TIME = (2026, 1, 1, 0, 0, 0)
 
 
 def version() -> str:
-    text = (ROOT / "src/partme_blender_mcp/__init__.py").read_text(encoding="utf-8")
+    text = (ROOT / "src/partme_blender_mcp/harness/version.py").read_text(encoding="utf-8")
     match = re.search(r'__version__\s*=\s*"([^"]+)"', text)
     if not match:
         raise RuntimeError("runtime version is missing")
@@ -47,11 +47,15 @@ def write_zip(target: Path, entries):
 
 
 def repository_entries():
+    """Runtime archive contents: installable package, client guides, and project metadata.
+
+    Brand artwork is deliberately excluded: it is repository page decoration, not runtime
+    payload, and would otherwise add ~6 MB of PNGs to every download.
+    """
     roots = (
         ROOT / "src",
         ROOT / "docs/getting-started",
         ROOT / "docs/assets/reference",
-        ROOT / "assets/brand",
     )
     entries = []
     for base in roots:
@@ -60,6 +64,35 @@ def repository_entries():
     for name in ("pyproject.toml", "README.md", "README.zh-CN.md", "LICENSE", "NOTICE",
                  "SECURITY.md", "THIRD_PARTY_NOTICES.md"):
         entries.append((ROOT / name, name))
+    return entries
+
+
+def addon_entries():
+    """Assembled Blender Add-on layout.
+
+    Blender installs one top-level package, so the Add-on sources and the Harness
+    runtime they drive are published as a single ``partme_blender_mcp/`` tree. The
+    Harness stays owned by ``src/`` and is copied in here, never duplicated on disk.
+
+    ``__main__.py`` and ``doctor.py`` ride along so the same installed package can also
+    be launched as an MCP server (``python -m partme_blender_mcp``) and diagnosed with
+    ``doctor --json``; two installs of one package name must not behave differently.
+    """
+    addon_root = ROOT / "addon/partme_blender_mcp"
+    src_root = ROOT / "src/partme_blender_mcp"
+    entries = [
+        (path, "partme_blender_mcp/" + path.relative_to(addon_root).as_posix())
+        for path in files_under(addon_root)
+    ]
+    entries.extend(
+        (path, "partme_blender_mcp/harness/" + path.relative_to(src_root / "harness").as_posix())
+        for path in files_under(src_root / "harness")
+    )
+    for name in ("validate_model_in_blender.py", "__main__.py", "doctor.py"):
+        entries.append((src_root / name, f"partme_blender_mcp/{name}"))
+    names = [name for _, name in entries]
+    if len(names) != len(set(names)):
+        raise RuntimeError("Add-on archive would contain duplicate entries")
     return entries
 
 
@@ -105,15 +138,8 @@ def build(output: Path) -> list[Path]:
     mac_name = f"partme-blender-mcp-macos-arm64-{release_version}.tar.gz"
     windows_name = f"partme-blender-mcp-windows-x64-{release_version}.zip"
 
-    addon_entries = [
-        (path, "partme_blender_mcp/" + path.relative_to(ROOT / "addon/partme_blender_mcp").as_posix())
-        for path in files_under(ROOT / "addon/partme_blender_mcp")
-    ]
-    addon_entries.extend(
-        (path, "partme_blender_mcp/harness/" + path.relative_to(ROOT / "src/partme_blender_mcp/harness").as_posix())
-        for path in files_under(ROOT / "src/partme_blender_mcp/harness")
-    )
-    write_zip(output / addon_name, addon_entries)
+    addon_entries_list = addon_entries()
+    write_zip(output / addon_name, addon_entries_list)
     write_zip(output / runtime_name, repository_entries())
 
     mac_installer = ROOT / "installers/macos/install_partme_blender_mcp.command"

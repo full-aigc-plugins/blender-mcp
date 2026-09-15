@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import argparse
 
-from . import PRODUCT_NAME, __version__
 from .doctor import diagnose
 from .harness.mcp_adapter import serve_stdio
+from .harness.version import PRODUCT_NAME, __version__
 
 
 def main(argv=None) -> int:

@@ -15,17 +15,17 @@ class Frontend:
 
     def redraw(self):
         for window in self.bpy.context.window_manager.windows:
-            for area in window.screen.areas:
-                if area.type in {"VIEW_3D", "DOPESHEET_EDITOR", "PROPERTIES"}:
-                    area.tag_redraw()
+            for screen in window.screen.areas:
+                if screen.type in {"VIEW_3D", "DOPESHEET_EDITOR", "PROPERTIES"}:
+                    screen.tag_redraw()
 
     def register(self):
         bpy = self.bpy
         runtime = self.runtime
         view = ViewCommands(bpy)
 
-        class CODEXBLENDER_OT_pause_work(bpy.types.Operator):
-            bl_idname = "codex_blender.pause_work"
+        class PARTMEBLENDER_OT_pause_work(bpy.types.Operator):
+            bl_idname = "partme_blender.pause_work"
             bl_label = "暂停 / 接管"
             bl_description = "Stop queued design commands and safely take over editing"
 
@@ -37,17 +37,17 @@ class Frontend:
                     pass
                 return {"FINISHED"}
 
-        class CODEXBLENDER_OT_resume_work(bpy.types.Operator):
-            bl_idname = "codex_blender.resume_work"
-            bl_label = "恢复 Codex"
-            bl_description = "Resume; Codex must inspect the scene before further design"
+        class PARTMEBLENDER_OT_resume_work(bpy.types.Operator):
+            bl_idname = "partme_blender.resume_work"
+            bl_label = "恢复制作"
+            bl_description = "Resume; the MCP client must inspect the scene before further design"
 
             def execute(self, context):
                 runtime.session.resume_local()
                 return {"FINISHED"}
 
-        class CODEXBLENDER_OT_revoke_work(bpy.types.Operator):
-            bl_idname = "codex_blender.revoke_work"
+        class PARTMEBLENDER_OT_revoke_work(bpy.types.Operator):
+            bl_idname = "partme_blender.revoke_work"
             bl_label = "撤销连接"
 
             def execute(self, context):
@@ -55,8 +55,40 @@ class Frontend:
                 bpy.app.timers.register(runtime.close, first_interval=0.01)
                 return {"FINISHED"}
 
-        class CODEXBLENDER_OT_change_view(bpy.types.Operator):
-            bl_idname = "codex_blender.change_view"
+        class PARTMEBLENDER_OT_approve_pending(bpy.types.Operator):
+            bl_idname = "partme_blender.approve_pending"
+            bl_label = "批准一次"
+            bl_description = (
+                "Approve this refused command once: the client may then retry the same request id"
+            )
+            request_id: bpy.props.StringProperty()
+
+            def execute(self, context):
+                try:
+                    runtime.session.approve_pending(self.request_id)
+                except Exception as exc:
+                    self.report({"WARNING"}, str(exc))
+                    return {"CANCELLED"}
+                self.report({"INFO"}, "Approved one retry of " + self.request_id)
+                return {"FINISHED"}
+
+        class PARTMEBLENDER_OT_deny_pending(bpy.types.Operator):
+            bl_idname = "partme_blender.deny_pending"
+            bl_label = "拒绝"
+            bl_description = "Refuse this command; the same request id will not ask again"
+
+            request_id: bpy.props.StringProperty()
+
+            def execute(self, context):
+                try:
+                    runtime.session.deny_pending(self.request_id)
+                except Exception as exc:
+                    self.report({"WARNING"}, str(exc))
+                    return {"CANCELLED"}
+                return {"FINISHED"}
+
+        class PARTMEBLENDER_OT_change_view(bpy.types.Operator):
+            bl_idname = "partme_blender.change_view"
             bl_label = "Set View"
             view: bpy.props.EnumProperty(items=[(v, v.title(), "") for v in ("CAMERA", "FRONT", "SIDE", "TOP")])
 
@@ -68,16 +100,16 @@ class Frontend:
                     return {"CANCELLED"}
                 return {"FINISHED"}
 
-        class CODEXBLENDER_OT_play_work(bpy.types.Operator):
-            bl_idname = "codex_blender.play_work"
+        class PARTMEBLENDER_OT_play_work(bpy.types.Operator):
+            bl_idname = "partme_blender.play_work"
             bl_label = "播放 / 暂停动画"
 
             def execute(self, context):
                 view.set_playback({"playing": not context.screen.is_animation_playing})
                 return {"FINISHED"}
 
-        class CODEXBLENDER_OT_jump_marker(bpy.types.Operator):
-            bl_idname = "codex_blender.jump_marker"
+        class PARTMEBLENDER_OT_jump_marker(bpy.types.Operator):
+            bl_idname = "partme_blender.jump_marker"
             bl_label = "Jump to Marker"
             frame: bpy.props.IntProperty()
 
@@ -86,19 +118,19 @@ class Frontend:
                 view.set_frame({"frame": self.frame})
                 return {"FINISHED"}
 
-        class VIEW3D_PT_codex_session(bpy.types.Panel):
-            bl_idname = "VIEW3D_PT_codex_session"
-            bl_label = "Codex 制作过程"
+        class VIEW3D_PT_partme_blender_session(bpy.types.Panel):
+            bl_idname = "VIEW3D_PT_partme_blender_session"
+            bl_label = "PartMe 制作过程"
             bl_space_type = "VIEW_3D"
             bl_region_type = "UI"
-            bl_category = "Codex"
+            bl_category = "PartMe MCP"
 
             def draw(self, context):
                 layout = self.layout
                 status = runtime.session.status()
                 layout.label(text=status["sessionId"], icon="LINKED")
                 layout.label(text="场景：" + context.scene.name)
-                layout.label(text="模式：" + {"interactive":"交互审阅", "auto_with_budget":"自动制作", "review_only":"只读检查"}[status["executionPolicy"]["mode"]])
+                layout.label(text="模式：" + {"interactive": "交互审阅", "auto_with_budget": "自动制作", "review_only": "只读检查"}[status["executionPolicy"]["mode"]])
                 layout.label(text="阶段：" + ("就绪" if status["stage"] == "Ready" else status["stage"]))
                 if status["progress"] is not None:
                     layout.label(text=f'报告进度：{status["progress"]:.0%}')
@@ -111,25 +143,45 @@ class Frontend:
                     layout.label(text=status["lastError"]["code"], icon="ERROR")
                 if status["needsInspection"]:
                     layout.label(text="等待重新检查场景", icon="INFO")
+                self.draw_approvals(layout)
                 row = layout.row(align=True)
                 if status["paused"]:
-                    row.operator("codex_blender.resume_work", icon="PLAY")
+                    row.operator("partme_blender.resume_work", icon="PLAY")
                 else:
-                    row.operator("codex_blender.pause_work", icon="PAUSE")
-                row.operator("codex_blender.revoke_work", text="撤销连接", icon="CANCEL")
+                    row.operator("partme_blender.pause_work", icon="PAUSE")
+                row.operator("partme_blender.revoke_work", text="撤销连接", icon="CANCEL")
                 row = layout.row(align=True)
                 for name, label in (("CAMERA", "相机"), ("FRONT", "正面"), ("SIDE", "侧面"), ("TOP", "顶面")):
-                    row.operator("codex_blender.change_view", text=label).view = name
+                    row.operator("partme_blender.change_view", text=label).view = name
                 row = layout.row(align=True)
-                row.operator("codex_blender.play_work", icon="PLAY")
+                row.operator("partme_blender.play_work", icon="PLAY")
                 row.prop(context.scene, "frame_current", text="帧")
                 for marker in sorted(context.scene.timeline_markers, key=lambda m: m.frame)[:12]:
                     if context.scene.frame_start <= marker.frame <= context.scene.frame_end:
-                        layout.operator("codex_blender.jump_marker", text=f'{marker.frame}: {marker.name}').frame = marker.frame
+                        layout.operator("partme_blender.jump_marker", text=f'{marker.frame}: {marker.name}').frame = marker.frame
 
-        self.classes = [CODEXBLENDER_OT_pause_work, CODEXBLENDER_OT_resume_work, CODEXBLENDER_OT_revoke_work,
-                        CODEXBLENDER_OT_change_view, CODEXBLENDER_OT_play_work, CODEXBLENDER_OT_jump_marker,
-                        VIEW3D_PT_codex_session]
+            @staticmethod
+            def draw_approvals(layout):
+                """Trusted local approval surface for gated commands refused by the Harness."""
+                pending = runtime.session.pending_authorizations()
+                box = layout.box()
+                if not pending:
+                    box.label(text="无待批准操作", icon="CHECKMARK")
+                    return
+                box.label(text=f"待批准操作 {len(pending)}", icon="LOCKED")
+                for entry in pending[:5]:
+                    column = box.column(align=True)
+                    column.label(text=f"{entry['command']}  {entry['requestId'][:20]}")
+                    if entry["summary"]:
+                        column.label(text=entry["summary"][:64])
+                    row = column.row(align=True)
+                    row.operator("partme_blender.approve_pending", text="批准一次", icon="CHECKMARK").request_id = entry["requestId"]
+                    row.operator("partme_blender.deny_pending", text="拒绝", icon="X").request_id = entry["requestId"]
+
+        self.classes = [PARTMEBLENDER_OT_pause_work, PARTMEBLENDER_OT_resume_work, PARTMEBLENDER_OT_revoke_work,
+                        PARTMEBLENDER_OT_approve_pending, PARTMEBLENDER_OT_deny_pending,
+                        PARTMEBLENDER_OT_change_view, PARTMEBLENDER_OT_play_work, PARTMEBLENDER_OT_jump_marker,
+                        VIEW3D_PT_partme_blender_session]
         registered = []
         try:
             for cls in self.classes:
@@ -144,8 +196,8 @@ class Frontend:
         def draw_header(self, context):
             status = runtime.session.status()
             row = self.layout.row(align=True)
-            row.label(text="Codex: " + ("已暂停" if status["paused"] else status["stage"]))
-            row.operator("codex_blender.resume_work" if status["paused"] else "codex_blender.pause_work",
+            row.label(text="PartMe: " + ("已暂停" if status["paused"] else status["stage"]))
+            row.operator("partme_blender.resume_work" if status["paused"] else "partme_blender.pause_work",
                          text="恢复" if status["paused"] else "接管", icon="PLAY" if status["paused"] else "PAUSE")
 
         self.header = draw_header

@@ -26,7 +26,11 @@ class PARTMEBLENDER_OT_start(bpy.types.Operator):
         policy = ExecutionPolicy.from_dict({"mode": context.scene.partme_blender_execution_mode,
                                            "approvedOutputRoot": str(root),
                                            "allowDesignedProxies": context.scene.partme_blender_allow_proxies})
-        handle = runtime.start(bpy, approved_output_root=root, approved_asset_roots=asset_roots, execution_policy=policy)
+        try:
+            handle = runtime.start(bpy, approved_output_root=root, approved_asset_roots=asset_roots, execution_policy=policy)
+        except Exception as exc:
+            self.report({"ERROR"}, f"PartMe Blender MCP did not start: {exc}")
+            return {"CANCELLED"}
         self.report({"INFO"}, f"PartMe Blender MCP started: {handle.descriptor_path}")
         return {"FINISHED"}
 
@@ -41,6 +45,63 @@ class PARTMEBLENDER_OT_revoke(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class PARTMEBLENDER_OT_approve_request(bpy.types.Operator):
+    bl_idname = "partme_blender.approve_request"
+    bl_label = "Approve Once"
+    bl_description = "Approve this refused command once; the client may retry the same request id"
+    request_id: bpy.props.StringProperty()
+
+    def execute(self, _context):
+        handle = runtime.current()
+        if handle is None:
+            self.report({"ERROR"}, "Start the MCP server first")
+            return {"CANCELLED"}
+        try:
+            handle.session.approve_pending(self.request_id)
+        except Exception as exc:
+            self.report({"WARNING"}, str(exc))
+            return {"CANCELLED"}
+        self.report({"INFO"}, "Approved one retry of " + self.request_id)
+        return {"FINISHED"}
+
+
+class PARTMEBLENDER_OT_deny_request(bpy.types.Operator):
+    bl_idname = "partme_blender.deny_request"
+    bl_label = "Deny"
+    bl_description = "Refuse this command; the same request id will not ask again"
+    request_id: bpy.props.StringProperty()
+
+    def execute(self, _context):
+        handle = runtime.current()
+        if handle is None:
+            self.report({"ERROR"}, "Start the MCP server first")
+            return {"CANCELLED"}
+        try:
+            handle.session.deny_pending(self.request_id)
+        except Exception as exc:
+            self.report({"WARNING"}, str(exc))
+            return {"CANCELLED"}
+        return {"FINISHED"}
+
+
+def _draw_approvals(layout, handle):
+    """Gated commands refused by the Harness wait here for a local decision."""
+    pending = handle.session.pending_authorizations()
+    box = layout.box()
+    if not pending:
+        box.label(text="No operation is waiting for approval", icon="CHECKMARK")
+        return
+    box.label(text=f"{len(pending)} operation(s) waiting for approval", icon="LOCKED")
+    for entry in pending[:5]:
+        column = box.column(align=True)
+        column.label(text=f"{entry['command']}  {entry['requestId'][:20]}")
+        if entry["summary"]:
+            column.label(text=entry["summary"][:64])
+        row = column.row(align=True)
+        row.operator(PARTMEBLENDER_OT_approve_request.bl_idname, text="Approve once", icon="CHECKMARK").request_id = entry["requestId"]
+        row.operator(PARTMEBLENDER_OT_deny_request.bl_idname, text="Deny", icon="X").request_id = entry["requestId"]
+
+
 class VIEW3D_PT_partme_blender_mcp(bpy.types.Panel):
     bl_label = "PartMe Blender MCP"
     bl_idname = "VIEW3D_PT_partme_blender_mcp"
@@ -50,8 +111,11 @@ class VIEW3D_PT_partme_blender_mcp(bpy.types.Panel):
 
     def draw(self, _context):
         layout = self.layout
-        if runtime.is_running():
+        handle = runtime.current()
+        if runtime.is_running() and handle is not None:
             layout.label(text="Connected", icon="LINKED")
+            layout.label(text=f"Scene revision {handle.session.scene_revision}")
+            _draw_approvals(layout, handle)
             layout.operator(PARTMEBLENDER_OT_revoke.bl_idname, icon="CANCEL")
         else:
             layout.label(text="Not connected", icon="UNLINKED")
@@ -62,7 +126,8 @@ class VIEW3D_PT_partme_blender_mcp(bpy.types.Panel):
             layout.operator(PARTMEBLENDER_OT_start.bl_idname, icon="PLAY")
 
 
-CLASSES = (PARTMEBLENDER_OT_start, PARTMEBLENDER_OT_revoke, VIEW3D_PT_partme_blender_mcp)
+CLASSES = (PARTMEBLENDER_OT_start, PARTMEBLENDER_OT_revoke, PARTMEBLENDER_OT_approve_request,
+           PARTMEBLENDER_OT_deny_request, VIEW3D_PT_partme_blender_mcp)
 
 
 def register():

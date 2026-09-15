@@ -376,3 +376,34 @@ docs/getting-started/
 6. 旧 `Codex Blender Connector` 兼容一个发布版本。
 
 这些决定经用户确认后，下一阶段才编写逐文件实施计划。
+
+### 13.1 实现状态（2026-09-15 修订）
+
+`v0.1.0` 预发行已按上述默认决定落地，逐条对应情况如下（第 5、6 条仍待迁移阶段完成）：
+
+| 决定 | 状态 | 可核验证据 |
+|---|---|---|
+| 1. Apache-2.0 | 已落地 | `LICENSE`、`NOTICE`、`pyproject.toml` 的 `license = "Apache-2.0"` 与 `license-files`；wheel 元数据为 `License-Expression: Apache-2.0` |
+| 2. 包名与 Server ID | 已落地 | `harness/version.py` 为单一事实源；`initialize` 返回 `serverInfo.name = partme-blender-mcp` |
+| 3. Add-on 页签与按钮 | 已落地 | `addon/partme_blender_mcp/panel.py` 的 `bl_category = "PartMe MCP"` 与 **Start MCP Server** |
+| 4. Release 为唯一推荐入口 | 已落地 | 各手册只链接 `releases/latest`；`v0.1.0` 为预发行，含 7 个资产 |
+| 5. 版本锁而非 submodule | 未落地 | `codex-blender-plugin` 尚未增加 `runtime.lock.json` 与差分门禁 |
+| 6. 旧名兼容一个发布版本 | 未落地 | 新仓已不含旧 `Codex Blender Connector` 入口；旧运行时仍留在 `codex-blender-plugin` |
+
+## 14. 本地审批（v0.1.0 追加）
+
+§5.3 要求门控操作由 Blender 本地签发授权。v0.1.0 以「待批 → 本地批准 → 同 requestId 重试」
+实现，授权票据不离开 Blender 进程：
+
+- Harness 拒绝门控命令时记录待批请求（上限 10 条、300 秒过期），响应给出
+  `AUTHORIZATION_REQUIRED` 与本地批准指引；
+- Blender 本地 UI（Add-on 面板与共享会话面板）列出待批操作，可批准一次或拒绝；
+- 批准绑定 `requestId + command`，默认 120 秒、上限 300 秒，单次使用；用户接管或撤销连接
+  立即失效；被拒绝的 requestId 不再重复打扰用户；
+- `AUTHORIZATION_REQUIRED` 不进入 requestId 幂等缓存（该拒绝发生在任何副作用之前），因此允许
+  同 id 重试；成功执行后仍按幂等重放处理，不会重复产生副作用；
+- 传输侧 `session.authorize` 通道保留，供宿主可信审批桥使用，与本地审批并存；
+- 客户端侧看不到任何可自行填写的授权字段：公共工具目录不包含 `blender_authorize`。
+
+真实 Blender 5.2.1 上的端到端证据（含门控拒绝、本地批准、删除生效、事务回滚）见
+[`docs/verification/generic-mcp-handshake-2026-09-15.md`](../../verification/generic-mcp-handshake-2026-09-15.md)。
