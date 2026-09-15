@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "partme-blender-mcp"
+version = "0.1.0"
+description = "Secure cross-client MCP runtime and Blender Add-on"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = {text = "Apache-2.0"}
+authors = [{name = "PartMe.AI"}]
+keywords = ["blender", "mcp", "3d", "automation"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13"
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/partme-ai/blender-mcp"
+Issues = "https://github.com/partme-ai/blender-mcp/issues"
+
+[project.scripts]
+partme-blender-mcp = "partme_blender_mcp.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

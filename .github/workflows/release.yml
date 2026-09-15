@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Verify
+        run: python -m unittest discover -s tests
+      - name: Build release assets
+        run: python scripts/package_release.py --output dist
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* --prerelease --generate-notes --title "PartMe Blender MCP ${GITHUB_REF_NAME}"

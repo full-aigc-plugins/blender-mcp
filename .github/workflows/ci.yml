@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: "3.11"
+          - os: macos-14
+            python: "3.13"
+          - os: windows-2025
+            python: "3.13"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Test and package
+        run: |
+          python -m unittest discover -s tests
+          python scripts/package_release.py --output dist
+      - name: Upload package evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate-${{ matrix.os }}-py${{ matrix.python }}
+          path: dist/
