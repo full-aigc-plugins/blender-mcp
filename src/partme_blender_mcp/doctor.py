@@ -8,8 +8,8 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import PRODUCT_NAME, __version__
 from .harness.mcp_adapter import McpAdapterError, discover_bridge
+from .harness.version import PRODUCT_NAME, __version__
 
 
 def _blender_executable() -> str | None:

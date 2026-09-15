@@ -1,6 +1,5 @@
 """Versioned VSE source, timing, transition, speed, audio and output controls."""
 
-from pathlib import Path
 
 from ..errors import HarnessError
 from .validation import finite_number, require_name

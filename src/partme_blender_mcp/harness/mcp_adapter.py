@@ -14,11 +14,14 @@ from types import SimpleNamespace
 
 from .runtime import build_registry
 from .transport import Endpoint, send_request
-
-
-MCP_PROTOCOL_VERSION = "2025-06-18"
-HARNESS_PROTOCOL_VERSION = "codex-blender/v1"
-BLENDER_DOWNLOAD_URL = "https://www.blender.org/download/"
+from .version import (
+    BLENDER_DOWNLOAD_URL,
+    HARNESS_PROTOCOL_VERSION,
+    MCP_PROTOCOL_VERSION,
+    MCP_SERVER_NAME,
+    PRODUCT_NAME,
+    __version__,
+)
 ENVELOPE_PROPERTIES = {
     "_requestId": {"type": "string", "minLength": 1, "description": "Stable request id for replay safety"},
     "_transactionId": {"type": "string", "minLength": 1, "description": "Harness milestone transaction id"},
@@ -70,6 +73,9 @@ def _command_tool(registry, capability: dict) -> dict:
     schema["additionalProperties"] = False
     requirements = detail.get("context", {}).get("requirements", [])
     description = f"PartMe Blender Harness command `{command}`. Risk: {capability['risk']}; maturity: {detail['maturity']}."
+    if capability["risk"] == "gated":
+        description += (" Requires local user approval in Blender: a client cannot approve its own "
+                        "request, and it retries the same request id after the user approves it.")
     if requirements:
         description += " Requirements: " + "; ".join(requirements)
     return {
@@ -119,25 +125,10 @@ def build_tool_catalog(*, registry=None, plugin_root: Path | None = None) -> lis
         "additionalProperties": False,
     }
     for name, command in CONTROL_TOOLS.items():
-        schema = deepcopy(control_schema)
-        if command == "session.authorize":
-            schema = {
-                "type": "object",
-                "properties": {
-                    "action": {"type": "string", "minLength": 1},
-                    "requestId": {"type": "string", "minLength": 1},
-                    "userConfirmed": {"type": "boolean"},
-                    "ttlSeconds": {"type": "integer", "minimum": 1, "maximum": 300},
-                    "_requestId": deepcopy(ENVELOPE_PROPERTIES["_requestId"]),
-                    "_transactionId": deepcopy(ENVELOPE_PROPERTIES["_transactionId"]),
-                },
-                "required": ["action", "requestId", "userConfirmed", "_transactionId"],
-                "additionalProperties": False,
-            }
         tools.append({
             "name": name, "title": command,
             "description": f"Guarded Harness lifecycle operation `{command}`.",
-            "inputSchema": schema, "outputSchema": {"type": "object"},
+            "inputSchema": deepcopy(control_schema), "outputSchema": {"type": "object"},
             "annotations": {"readOnlyHint": False, "destructiveHint": command == "transaction.rollback",
                             "idempotentHint": False, "openWorldHint": False},
             "_meta": {"codexBlenderControl": command},
@@ -269,6 +260,18 @@ class McpAdapter:
         self.registry = registry or _static_registry()
         self.tools = build_tool_catalog(registry=self.registry, plugin_root=self.plugin_root)
         self.tools_by_name = {tool["name"]: tool for tool in self.tools}
+        self.client: dict | None = None
+
+    def record_client(self, client_info) -> None:
+        """Remember the connecting client name/version for the local session record."""
+        if not isinstance(client_info, dict):
+            return
+        name = client_info.get("name")
+        version = client_info.get("version")
+        self.client = {
+            "name": name if isinstance(name, str) else "unknown",
+            "version": version if isinstance(version, str) else "unknown",
+        }
 
     def list_tools(self, *, cursor: str | None = None, limit: int = 50) -> dict:
         if cursor is None:
@@ -342,9 +345,11 @@ class McpAdapter:
             if arguments:
                 return self._error(McpAdapterError("INVALID_ARGUMENT", "connection status accepts no arguments"))
             try:
-                return self._result(self._active_bridge().status())
+                payload = dict(self._active_bridge().status())
             except McpAdapterError as error:
                 return self._error(error)
+            payload["client"] = self.client or {"name": "unknown", "version": "unknown"}
+            return self._result(payload)
         tool = self.tools_by_name.get(name)
         if tool is None:
             return self._error(McpAdapterError("UNKNOWN_TOOL", f"unknown MCP tool: {name}"))
@@ -395,10 +400,12 @@ def serve_stdio(input_stream=None, output_stream=None, adapter: McpAdapter | Non
             if method == "notifications/initialized":
                 continue
             if method == "initialize":
+                params = request.get("params") if isinstance(request.get("params"), dict) else {}
+                adapter.record_client(params.get("clientInfo"))
                 result = {
                     "protocolVersion": MCP_PROTOCOL_VERSION,
                     "capabilities": {"tools": {"listChanged": False}},
-                    "serverInfo": {"name": "partme-blender-mcp", "title": "PartMe Blender MCP", "version": "0.1.0"},
+                    "serverInfo": {"name": MCP_SERVER_NAME, "title": PRODUCT_NAME, "version": __version__},
                 }
             elif method == "ping":
                 result = {}

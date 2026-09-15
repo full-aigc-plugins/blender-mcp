@@ -46,12 +46,16 @@ class RepositoryStructureTests(unittest.TestCase):
 
 class RuntimeContractTests(unittest.TestCase):
     def test_package_version_and_neutral_identity(self):
-        init_path = ROOT / "src/partme_blender_mcp/__init__.py"
-        spec = importlib.util.spec_from_file_location("partme_blender_mcp_version", init_path)
+        # Identity lives inside harness/ so the installed Blender Add-on resolves it too.
+        version_path = ROOT / "src/partme_blender_mcp/harness/version.py"
+        spec = importlib.util.spec_from_file_location("partme_blender_mcp_version", version_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         self.assertEqual(module.__version__, VERSION)
         self.assertEqual(module.PRODUCT_NAME, "PartMe Blender MCP")
+        self.assertEqual(module.MCP_SERVER_ID, "partme_blender")
+        init_text = (ROOT / "src/partme_blender_mcp/__init__.py").read_text(encoding="utf-8")
+        self.assertIn("from .harness.version import", init_text, "public identity must re-export the single source")
 
     def test_stdio_entrypoint_initializes_and_lists_single_underscore_tools(self):
         request = "\n".join((

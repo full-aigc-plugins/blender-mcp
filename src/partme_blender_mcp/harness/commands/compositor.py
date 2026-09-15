@@ -17,7 +17,7 @@ class CompositorCommands:
             if hasattr(scene,'use_nodes'):scene.use_nodes=True
         return tree
     def configure(self,args):
-        scene=self.bpy.context.scene;tree=self._tree(True);exposure=finite_number(args.get('exposure',0),'exposure');glare=args.get('glare',False)
+        tree=self._tree(True);exposure=finite_number(args.get('exposure',0),'exposure');glare=args.get('glare',False)
         if type(glare) is not bool:raise HarnessError('INVALID_ARGUMENT','glare must be boolean')
         def node(node_type,name):
             existing=tree.nodes.get(name)
@@ -35,10 +35,10 @@ class CompositorCommands:
         for source,target in zip(chain,chain[1:]):tree.links.new(source.outputs['Image'],target.inputs['Image'])
         return {'changedObjects':[],'result':{'nodes':[item.name for item in chain],'exposure':exposure,'glare':glare}}
     def inspect(self,_args):
-        scene=self.bpy.context.scene;tree=self._tree(False)
+        tree=self._tree(False)
         if tree is None:return {'changedObjects':[],'result':{'enabled':False,'nodes':[],'links':[]}}
         return {'changedObjects':[],'result':{'enabled':True,'nodes':[{'name':n.name,'type':n.bl_idname} for n in tree.nodes],
-          'links':[{'from':f'{l.from_node.name}.{l.from_socket.name}','to':f'{l.to_node.name}.{l.to_socket.name}'} for l in tree.links]}}
+          'links':[{'from':f'{link.from_node.name}.{link.from_socket.name}','to':f'{link.to_node.name}.{link.to_socket.name}'} for link in tree.links]}}
 
     def add_tracking_mask(self,args):
         clip=self.bpy.data.movieclips.get(args.get('clip'));name=args.get('maskName');points=args.get('points')

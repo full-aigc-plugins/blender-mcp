@@ -108,11 +108,9 @@ class ObjectCommands:
             scale = Vector(transforms.get('scale', scale))
             obj.matrix_world = Matrix.LocRotScale(location, rotation, scale)
             return {'changedObjects': [name], 'result': self.resolver.receipt(obj)}
-        changed = False
         for field, attr in (("location", "location"), ("rotation", "rotation_euler"), ("scale", "scale")):
             if field in arguments:
                 setattr(obj, attr, transforms[field])
-                changed = True
         return {"changedObjects": [name], 'result': self.resolver.receipt(obj)}
 
     def rename(self, arguments: dict) -> dict:
@@ -136,7 +134,7 @@ class ObjectCommands:
     def parent(self, arguments: dict) -> dict:
         child = self.resolver.resolve({'name':arguments.get('child'), 'objectId':arguments.get('childObjectId')})
         parent = self.resolver.resolve({'name':arguments.get('parent'), 'objectId':arguments.get('parentObjectId')})
-        child_name, parent_name = child.name, parent.name
+        child_name = child.name
         ancestor = parent
         visited = set()
         while ancestor is not None:

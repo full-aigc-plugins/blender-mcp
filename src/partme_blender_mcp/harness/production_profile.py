@@ -13,7 +13,6 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from .errors import HarnessError
 from .registry import CommandRegistry
 
 # Classes that are never production-eligible.

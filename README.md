@@ -181,24 +181,46 @@ Report vulnerabilities privately through [GitHub Security Advisories](https://gi
 
 ```bash
 python -m unittest discover -s tests
+python -m compileall -q src addon scripts tests
+python -m ruff check src addon scripts tests
 python scripts/package_release.py --output dist
 git diff --check
 ```
 
 Release output includes the Add-on, runtime, macOS/Windows bundles, `runtime-manifest.json`, `SHA256SUMS.txt`, and `SBOM.spdx.json`. Tags matching `v*` trigger the prerelease workflow.
 
+The host-neutral MCP conformance run needs Blender and a live session:
+
+```bash
+BLENDER_USER_CONFIG=/tmp/pbm-config BLENDER_USER_SCRIPTS=/tmp/pbm-addons \
+  /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup \
+  --python-exit-code 1 --python tests/runtime/generic_mcp_client_handshake.py \
+  -- /path/to/unpacked-addon
+```
+
 ## Repository map
 
 ```text
 blender-mcp/
-├── src/partme_blender_mcp/     # stdio MCP runtime and Harness
-├── addon/partme_blender_mcp/   # Blender Add-on
-├── installers/                 # macOS and Windows installers
-├── scripts/package_release.py  # reproducible release builder
-├── docs/getting-started/       # illustrated client/platform guides
-├── assets/brand/               # logo, hero, cover, architecture
-└── tests/                      # docs, protocol, release contracts
+├── src/partme_blender_mcp/            # stdio MCP runtime, CLI, and doctor
+│   └── harness/                       # session boundary, transport, commands, compat
+│       ├── commands/                  # one module per command domain
+│       ├── compat/                    # Blender 4.2 → 5.2 adapters
+│       └── version.py                 # single source of product identity
+├── addon/partme_blender_mcp/          # Blender Add-on: bl_info, panel, lifecycle only
+├── installers/                        # macOS and Windows user-scope installers
+├── scripts/package_release.py         # reproducible release builder
+├── tests/                             # docs, approval, structure, release contracts
+│   └── runtime/                       # scripts that need a live Blender session
+├── docs/getting-started/              # illustrated client/platform guides
+├── docs/verification/                 # security, license, and handshake evidence
+├── assets/brand/                      # logo, hero, cover, architecture
+└── dist/                              # build output (not tracked)
 ```
+
+The runtime lives in `src/` only. The Add-on archive is assembled at package time: the
+Harness is copied under the Add-on's single top-level directory, so `partme_blender_mcp`
+installs as one package from either archive. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Compatibility and migration
 
@@ -210,6 +232,7 @@ blender-mcp/
 - [Illustrated setup center](docs/getting-started/README.zh-CN.md)
 - [v0.1.0 security review](docs/verification/security-review-0.1.0.md)
 - [v0.1.0 license compliance triage](docs/verification/license-compliance-0.1.0.md)
+- [Generic MCP client handshake evidence](docs/verification/generic-mcp-handshake-2026-09-15.md)
 - [Brand assets and generation provenance](assets/brand/README.md)
 
 ## Contributing and license

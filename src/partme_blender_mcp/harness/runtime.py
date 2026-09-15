@@ -285,7 +285,6 @@ def build_registry(bpy_module, *, runtime_mode: str = "managed", approved_output
                       validate=closed_arguments(required=('camera','path','name','frameStart','frameEnd'),optional=('targetObjectId',)))
     registry.register('camera.add_handheld',advanced_animation.camera_handheld,
                       validate=closed_arguments(required=('frameStart','frameEnd'),optional=('name','objectId','translationStrength','rotationStrength','noiseScale','seed')))
-    common_validation=('frameStart','frameEnd','limit')
     registry.register('validation.foot_drift',quality.foot_drift,
                       validate=closed_arguments(required=('armature','bone','frameStart','frameEnd'),optional=('limit',)),risk='read')
     registry.register('validation.limb_length',quality.limb_length,

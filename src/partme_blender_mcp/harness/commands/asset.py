@@ -1,5 +1,4 @@
 """Import only from caller-approved asset roots."""
-from pathlib import Path
 from ..errors import HarnessError
 from ..identity import ObjectResolver
 

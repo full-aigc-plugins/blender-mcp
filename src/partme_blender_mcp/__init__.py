@@ -1,5 +1,11 @@
-"""PartMe Blender MCP public runtime identity."""
+"""PartMe Blender MCP public runtime identity.
 
-__version__ = "0.1.0"
-PRODUCT_NAME = "PartMe Blender MCP"
-MCP_SERVER_ID = "partme_blender"
+Identity constants live in ``harness.version`` so that the Blender Add-on, which ships
+the Harness under a different top-level ``__init__.py``, resolves the same values.
+"""
+
+from .harness.version import (  # noqa: F401
+    MCP_SERVER_ID,
+    PRODUCT_NAME,
+    __version__,
+)
