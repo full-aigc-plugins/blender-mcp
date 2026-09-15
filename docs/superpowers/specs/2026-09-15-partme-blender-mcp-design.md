@@ -202,8 +202,18 @@ python -m partme_blender_mcp
 5. 回到 3D View，按 `N`，打开 **PartMe MCP**。
 6. 选择允许的输出/素材目录，点击 **Start MCP Server**。
 
-安装文档使用用户提供的 Blender 5.2.1 中文界面截图；截图中出现的社区插件只作为界面背景，
-必须裁切或标注，不能暗示用户启用它。
+安装文档使用用户提供的 Blender 5.2.1 中文界面截图：
+
+![打开 Blender Preferences](../../assets/reference/blender-open-preferences.png)
+
+![从磁盘安装 Blender Add-on](../../assets/reference/blender-install-from-disk.png)
+
+另有一张显示社区 `MCP for Blender` 的截图仅作为 Add-ons 页面位置参考，不得用作启用
+PartMe Add-on 的最终指引：
+
+![社区 Add-on 页面参考](../../assets/reference/blender-addon-location-community-example.png)
+
+正式手册必须对参考图进行明确标注，不能暗示用户启用社区插件。
 
 ### 7.2 macOS
 
@@ -264,8 +274,28 @@ docs/getting-started/
 - 常见错误和撤销方式；
 - 不把客户端登录、API Key 或云端权限混入 Blender MCP。
 
-MiniMax Design 若没有公开、稳定的自定义 stdio MCP 配置入口，文档必须标为“待客户端验证”，
-不能根据截图或其他客户端配置臆造菜单。
+### 8.1 MiniMax Design 已确认的配置入口
+
+用户提供的当前 MiniMax Design 界面证明它具备 **添加自定义连接器** 功能，包含：
+
+- 手动填写与 JSON 配置两个入口；
+- 连接器名称；
+- `stdio` 连接方式；
+- 启动命令；
+- 启动参数；
+- 备注、启用开关和高级选项。
+
+![MiniMax Design 添加自定义连接器](../../assets/reference/minimax-design-add-custom-connector.png)
+
+用户补充截图还确认连接方式下拉框包含 `stdio`、`HTTP`、`Streamable HTTP` 和 `SSE`：
+
+![MiniMax Design 连接方式选项](../../assets/reference/minimax-design-transport-options.png)
+
+因此 MiniMax Design 不再标记为“未知是否存在配置入口”。但截图不能证明参数序列化、环境变量、
+分页、`structuredContent`、授权交互或真实 Blender 往返已经兼容；这些项目仍须通过目标版本的
+实际握手验证后才能标为支持。首版只承诺本地 `stdio`；HTTP、Streamable HTTP 和 SSE 属于后续
+传输扩展，必须先补认证、监听范围、会话隔离和网络威胁模型。手册可以按已观察字段编写配置
+步骤，不得臆造高级选项内容。
 
 ## 9. 自动检测
 
@@ -301,7 +331,7 @@ MiniMax Design 若没有公开、稳定的自定义 stdio MCP 配置入口，文
 |---|---|---|---|
 | macOS arm64 | 4.2 LTS、5.2 LTS | Codex、Claude Desktop、Claude Code | 安装、握手、只读、建模事务、撤销、重启 |
 | Windows x64 | 4.2 LTS、5.2 LTS | Codex、Claude Desktop、Cursor | 安装、Named Pipe、只读、建模事务、恢复、卸载 |
-| macOS/Windows | 5.2 LTS | MiniMax Design | 仅在确认其自定义 MCP 入口后执行同等验收 |
+| macOS/Windows | 5.2 LTS | MiniMax Design | 配置入口已由用户截图确认；真实 stdio 握手、分页、调用和授权仍为 `NOT_RUN` |
 | Linux | 4.2 LTS | Generic MCP Inspector | 实验性 loopback，不能替代桌面平台证据 |
 
 客户端握手成功不代表 Blender 制作能力全部通过；仍需运行固定的场景检查、建模事务、回滚和
