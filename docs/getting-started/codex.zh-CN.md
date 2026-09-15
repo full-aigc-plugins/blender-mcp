@@ -63,7 +63,7 @@ blender_animation_pose_keyframe
 
 ## 5. 开始制作
 
-只读验证通过后，再提出建模任务。修改操作必须使用事务和最新 scene revision；删除、覆盖、专家 Python 与最终导出仍由 Harness 授权控制。不要开启 Codex auto-run 来绕过 Blender 本地确认。
+只读验证通过后，再提出建模任务。修改操作必须使用事务和最新 scene revision；`v0.1.0` 会拒绝删除、覆盖、专家 Python 与受门禁最终导出，且不提供 MCP 授权签发工具。不要开启 Codex auto-run 试图绕过门禁。
 
 ## 6. 排错
 

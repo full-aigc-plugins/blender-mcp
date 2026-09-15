@@ -359,7 +359,7 @@ docs/getting-started/
 - Blender 可以通过从磁盘安装 ZIP 完成 Add-on 安装；
 - macOS 和 Windows 安装、升级、卸载均有实际证据；
 - Codex 与至少一个非 Codex MCP Client 完成真实 Blender 写入与回滚；
-- 所有 170 条当前 Connector 命令有唯一 MCP tool，且危险操作仍由 Harness 拒绝未授权调用；
+- 164 条供应商中立、非专家 Python 的 Blender 命令有唯一 MCP tool；供应商上传和任意 Python 不进入公共目录，危险操作仍由 Harness 拒绝未授权调用；
 - 文档不包含开发机绝对路径、虚构菜单或错误的社区 Add-on 指引；
 - `codex-blender-plugin` 固定消费经过校验的 runtime 版本；
 - 未验证客户端和平台明确标为 `NOT_RUN`。

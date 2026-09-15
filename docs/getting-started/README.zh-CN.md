@@ -1,7 +1,7 @@
 # PartMe Blender MCP 图文安装中心
 
 > 当前阶段：**预发布文档**  
-> Runtime Release：尚未发布  
+> Runtime Release：`v0.1.0` 预发布
 > 文档核验日期：2026-09-15
 
 PartMe Blender MCP 让多个 MCP 客户端通过同一个安全 Harness 操作 Blender。完整安装永远分两步：
@@ -19,7 +19,7 @@ flowchart LR
 
 | 系统 | 手册 | 当前证据 |
 |---|---|---|
-| macOS Apple Silicon / Intel | [macOS](macos.zh-CN.md) | 文档完成；独立 Runtime 尚未发布 |
+| macOS Apple Silicon / Intel | [macOS](macos.zh-CN.md) | 包构建、Runtime 安装、Blender 5.2.1 Add-on 安装 **VERIFIED** |
 | Windows 10/11 x64 | [Windows](windows.zh-CN.md) | **DOCUMENTED_NOT_RUN** |
 
 ## 再选择 MCP 客户端
@@ -43,12 +43,12 @@ flowchart LR
 下载文件：
 
 ```text
-partme-blender-mcp-addon-<version>.zip
-partme-blender-mcp-runtime-<version>.zip
+partme-blender-mcp-addon-0.1.0.zip
+partme-blender-mcp-runtime-0.1.0.zip
 SHA256SUMS.txt
 ```
 
-当前 Release 为空，不能执行下载步骤。文档描述的是即将实现的发行合同。
+安装前必须核对 Release 中的 `SHA256SUMS.txt`；预发布不等于生产就绪。
 
 ## 所有客户端共同验收
 

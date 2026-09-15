@@ -77,7 +77,7 @@ blender_scene_inspect
 - `BLENDER_NOT_CONNECTED`：指导用户在 Blender 点击 Start MCP Server。
 - `AMBIGUOUS_SESSION`：让用户选择窗口，不能自动重试所有描述符。
 - `STALE_SCENE_REVISION`：重新检查场景并开启新事务。
-- `AUTHORIZATION_REQUIRED`：显示具体动作，等待本地授权。
+- `AUTHORIZATION_REQUIRED`：显示具体动作并停止；`v0.1.0` 不允许客户端签发授权。
 - MCP 解析错误：保留 stderr 日志，不把无效输出拼回 JSON-RPC。
 
 ## 8. 网络传输

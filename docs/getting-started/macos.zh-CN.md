@@ -1,17 +1,17 @@
 # PartMe Blender MCP：macOS 安装手册
 
-> 支持状态：**DOCUMENTED_NOT_RUN**  
+> 支持状态：**VERIFIED**（本机包构建、Runtime 安装、Blender 5.2.1 Add-on 隔离安装）
 > 适用：macOS Apple Silicon / Intel、Blender 4.2–5.2  
 > 核验日期：2026-09-15
 
-> **预发布提醒**：首个 Runtime Release 尚未发布。以下是正式发行后的操作合同；在 Release 出现对应文件和 SHA-256 前，不要把示例文件名当成已可下载产物。
+> **预发布提醒**：`v0.1.0` 是预发布版本。只从 GitHub Release 下载，并在安装前核对 SHA-256。
 
 ## 1. 下载两个组件
 
 PartMe Blender MCP 包含：
 
-1. `partme-blender-mcp-runtime-<version>.zip`：由 MCP 客户端启动。
-2. `partme-blender-mcp-addon-<version>.zip`：安装到 Blender。
+1. `partme-blender-mcp-runtime-0.1.0.zip`：由 MCP 客户端启动。
+2. `partme-blender-mcp-addon-0.1.0.zip`：安装到 Blender。
 
 下载入口：
 
@@ -27,8 +27,8 @@ Apple Silicon 选择 arm64；Intel Mac 选择 x64。
 
 ```bash
 cd "$HOME/Downloads"
-shasum -a 256 partme-blender-mcp-addon-<version>.zip
-shasum -a 256 partme-blender-mcp-runtime-<version>.zip
+shasum -a 256 partme-blender-mcp-addon-0.1.0.zip
+shasum -a 256 partme-blender-mcp-runtime-0.1.0.zip
 ```
 
 输出必须与 `SHA256SUMS.txt` 完全一致。不同则停止安装。
@@ -49,7 +49,7 @@ python3 -m partme_blender_mcp --version
 python3 -m partme_blender_mcp doctor --json
 ```
 
-首个 Release 前，这些命令仍是预期接口，不是当前可执行证明。
+`v0.1.0` 已通过源码 ZIP 的隔离 pip 安装与 MCP initialize 测试。
 
 ## 4. 在 Blender 中从磁盘安装
 
@@ -63,7 +63,7 @@ python3 -m partme_blender_mcp doctor --json
 
 然后：
 
-1. 选择 `partme-blender-mcp-addon-<version>.zip`，不要解压。
+1. 选择 `partme-blender-mcp-addon-0.1.0.zip`，不要解压。
 2. 搜索并启用 **PartMe Blender MCP**。
 3. 回到 3D View，按 `N`。
 4. 打开 **PartMe MCP** 页签。
