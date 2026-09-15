@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build deterministic PartMe Blender MCP v0.1.0 release assets."""
+"""Build deterministic PartMe Blender MCP release assets."""
 
 from __future__ import annotations
 
@@ -143,21 +143,24 @@ def build(output: Path) -> list[Path]:
     write_zip(output / runtime_name, repository_entries())
 
     mac_installer = ROOT / "installers/macos/install_partme_blender_mcp.command"
+    platform_common = repository_entries()
     write_tar_gz(output / mac_name, [
+        *platform_common,
         (output / runtime_name, runtime_name),
         (output / addon_name, addon_name),
         (mac_installer, mac_installer.name),
-        (ROOT / "LICENSE", "LICENSE"),
+        (ROOT / "installers/README-FIRST.txt", "README-FIRST.txt"),
     ])
 
     windows_installer = ROOT / "installers/windows/install_partme_blender_mcp.bat"
     windows_ps = ROOT / "installers/windows/install_partme_blender_mcp.ps1"
     write_zip(output / windows_name, [
+        *platform_common,
         (output / runtime_name, runtime_name),
         (output / addon_name, addon_name),
         (windows_installer, windows_installer.name),
         (windows_ps, windows_ps.name),
-        (ROOT / "LICENSE", "LICENSE"),
+        (ROOT / "installers/README-FIRST.txt", "README-FIRST.txt"),
     ])
 
     manifest = {

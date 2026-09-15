@@ -1,7 +1,7 @@
 # Generic MCP client handshake — 2026-09-15
 
 > Environment: macOS arm64 (Darwin 25.6.0), Blender 5.2.1 LTS (build `9e2066aef7ef`, 2026-08-25), Python 3.13
-> Harness: `partme-blender-mcp-addon-0.1.0.zip` unpacked exactly as a user installs it
+> Harness: `partme-blender-mcp-addon-0.1.1.zip` unpacked exactly as a user installs it
 > Client: `tests/runtime/generic_mcp_client_handshake.py` — a plain stdio JSON-RPC client, no vendor SDK
 > Result: **PASS** on the paths below; Windows and the remaining clients stay `DOCUMENTED_NOT_RUN`
 
@@ -29,7 +29,7 @@ child process, and pumps Blender's main-thread queue while the child talks to th
 ```json
 {
   "protocolVersion": "2025-06-18",
-  "serverInfo": {"name": "partme-blender-mcp", "title": "PartMe Blender MCP", "version": "0.1.0"},
+  "serverInfo": {"name": "partme-blender-mcp", "title": "PartMe Blender MCP", "version": "0.1.1"},
   "serverCapabilities": ["tools"],
   "connectionStatus": {
     "connected": true,

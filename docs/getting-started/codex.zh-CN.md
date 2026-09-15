@@ -63,7 +63,7 @@ blender_animation_pose_keyframe
 
 ## 5. 开始制作
 
-只读验证通过后，再提出建模任务。修改操作必须使用事务和最新 scene revision；`v0.1.0` 会拒绝删除、覆盖、专家 Python 与受门禁最终导出，且不提供 MCP 授权签发工具。不要开启 Codex auto-run 试图绕过门禁。
+只读验证通过后，再提出建模任务。修改操作必须使用事务和最新 scene revision；删除、覆盖、专家 Python 与受门禁最终导出会先被拒绝，用户必须在 Blender 本地选择“批准一次”后再用相同 request ID 重试。不要开启 Codex auto-run 试图绕过门禁。
 
 ## 6. 排错
 

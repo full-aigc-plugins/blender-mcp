@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 import zipfile
@@ -12,7 +13,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 
 class RepositoryStructureTests(unittest.TestCase):
@@ -98,7 +99,7 @@ class RuntimeContractTests(unittest.TestCase):
             cwd=ROOT, env=env, capture_output=True, text=True, timeout=5,
         )
         self.assertEqual(version.returncode, 0, version.stderr)
-        self.assertEqual(version.stdout.strip(), "PartMe Blender MCP 0.1.0")
+        self.assertEqual(version.stdout.strip(), "PartMe Blender MCP 0.1.1")
         help_result = subprocess.run(
             [sys.executable, "-m", "partme_blender_mcp", "--help"],
             cwd=ROOT, env=env, capture_output=True, text=True, timeout=5,
@@ -153,6 +154,24 @@ class ReleasePackageTests(unittest.TestCase):
             with zipfile.ZipFile(output / f"partme-blender-mcp-runtime-{VERSION}.zip") as archive:
                 self.assertIn("pyproject.toml", archive.namelist())
                 self.assertIn("src/partme_blender_mcp/__main__.py", archive.namelist())
+
+    def test_platform_bundles_are_self_describing_python_projects(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            subprocess.run(
+                [sys.executable, str(ROOT / "scripts/package_release.py"), "--output", directory],
+                cwd=ROOT, check=True, capture_output=True, text=True,
+            )
+            mac_bundle = output / f"partme-blender-mcp-macos-arm64-{VERSION}.tar.gz"
+            windows_bundle = output / f"partme-blender-mcp-windows-x64-{VERSION}.zip"
+            with tarfile.open(mac_bundle, "r:gz") as archive:
+                names = set(archive.getnames())
+            self.assertIn("pyproject.toml", names)
+            self.assertIn("README-FIRST.txt", names)
+            with zipfile.ZipFile(windows_bundle) as archive:
+                names = set(archive.namelist())
+            self.assertIn("pyproject.toml", names)
+            self.assertIn("README-FIRST.txt", names)
 
 
 class ReadmeContractTests(unittest.TestCase):

@@ -73,7 +73,7 @@ claude mcp remove --scope user partme_blender
 常见问题：
 
 - `spawn python ENOENT`：填写 Python 绝对路径。
-- 超时：检查 Blender 是否暂停；`AUTHORIZATION_REQUIRED` 在 `v0.1.0` 中是停止条件，不是重试条件。
+- 超时：检查 Blender 是否暂停；`AUTHORIZATION_REQUIRED` 需要先在 Blender 本地批准，再用同一 request ID 重试。
 - 工具不完整：客户端必须跟随 `tools/list` 的 `nextCursor`。
 - 多个会话：通过明确描述符绑定目标窗口。
 

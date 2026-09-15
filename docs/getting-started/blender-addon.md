@@ -4,13 +4,13 @@
 > Applies to: Blender 4.2--5.2, macOS / Windows / Linux  
 > Verified: 2026-09-15
 
-> **Pre-release notice**: `v0.1.0` is a pre-release. Download only from [GitHub Release](https://github.com/partme-ai/blender-mcp/releases/latest) and verify SHA-256 before installing.
+> **Pre-release notice**: `v0.1.1` is a pre-release. Download only from [GitHub Release](https://github.com/partme-ai/blender-mcp/releases/latest) and verify SHA-256 before installing.
 
 ## 1. Prerequisites
 
 - Blender 4.2 or later installed ([official download](https://www.blender.org/download/)).
 - PartMe Blender MCP Runtime installed (see [macOS install](macos.zh-CN.md) or [Windows install](windows.zh-CN.md)).
-- `partme-blender-mcp-addon-0.1.0.zip` downloaded from Release and SHA-256 verified.
+- `partme-blender-mcp-addon-0.1.1.zip` downloaded from Release and SHA-256 verified.
 
 ## 2. Install from Disk
 
@@ -22,7 +22,7 @@
 
    ![Install from Disk](../assets/reference/blender-install-from-disk.png)
 
-3. Select `partme-blender-mcp-addon-0.1.0.zip`. Do not extract it.
+3. Select `partme-blender-mcp-addon-0.1.1.zip`. Do not extract it.
 4. Search for and enable **PartMe Blender MCP**.
 
 Do not confuse the community plugin **MCP for Blender** with the PartMe Add-on.
@@ -38,7 +38,9 @@ Return to 3D View, press `N` to open the sidebar, and select the **PartMe MCP** 
 | Mode | Enum | `interactive` (default): review milestones; `auto_with_budget`: complete authorized task and export; `review_only`: read-only inspection, no scene changes or exports. |
 | Design missing assets | Checkbox | Default off. When enabled, allows the Harness to generate placeholder proxies for missing assets. |
 | Start MCP Server | Button | Shown when not connected. Requires the Output directory to be set. |
-| Revoke Access | Button | Shown when connected. Revokes authorization and disconnects the MCP connection. |
+| Approve once | Button | Approves one retry of the exact pending request ID; the client must retry with that same ID. |
+| Deny | Button | Denies the pending request and clears it from the local queue. |
+| Revoke Access | Button | Revokes authorization and disconnects the MCP connection. |
 
 ## 4. Connection States
 

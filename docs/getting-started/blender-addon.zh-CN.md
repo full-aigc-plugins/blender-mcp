@@ -4,13 +4,13 @@
 > 适用：Blender 4.2–5.2、macOS / Windows / Linux  
 > 核验日期：2026-09-15
 
-> **预发布提醒**：`v0.1.0` 是预发布版本。只从 [GitHub Release](https://github.com/partme-ai/blender-mcp/releases/latest) 下载，并在安装前核对 SHA-256。
+> **预发布提醒**：`v0.1.1` 是预发布版本。只从 [GitHub Release](https://github.com/partme-ai/blender-mcp/releases/latest) 下载，并在安装前核对 SHA-256。
 
 ## 1. 前置条件
 
 - 已安装 Blender 4.2 或更高版本（[官方下载](https://www.blender.org/download/)）。
 - 已安装 PartMe Blender MCP Runtime（参见 [macOS 安装](macos.zh-CN.md) 或 [Windows 安装](windows.zh-CN.md)）。
-- 已从 Release 下载 `partme-blender-mcp-addon-0.1.0.zip` 并校验 SHA-256。
+- 已从 Release 下载 `partme-blender-mcp-addon-0.1.1.zip` 并校验 SHA-256。
 
 ## 2. 从磁盘安装 Add-on
 
@@ -22,7 +22,7 @@
 
    ![从磁盘安装](../assets/reference/blender-install-from-disk.png)
 
-3. 选择 `partme-blender-mcp-addon-0.1.0.zip`。不要解压。
+3. 选择 `partme-blender-mcp-addon-0.1.1.zip`。不要解压。
 4. 搜索并启用 **PartMe Blender MCP**。
 
 不要把社区插件 **MCP for Blender** 当作 PartMe Add-on。
@@ -38,7 +38,9 @@
 | Mode（执行模式） | 枚举 | `interactive`（默认）：审查里程碑；`auto_with_budget`：自动完成授权任务并导出；`review_only`：只读检查，不修改场景或导出。 |
 | Design missing assets | 复选框 | 默认关闭。启用后允许 Harness 为缺失素材生成占位代理。 |
 | Start MCP Server | 按钮 | 未连接时显示。需要已选输出目录才能启动。 |
-| Revoke Access | 按钮 | 已连接时显示。撤销授权并断开 MCP 连接。 |
+| Approve once / 批准一次 | 按钮 | 对待批准列表中的具体 request ID 授权一次；客户端必须用同一 ID 重试。 |
+| Deny / 拒绝 | 按钮 | 拒绝该请求并清除待批准项。 |
+| Revoke Access | 按钮 | 撤销授权并断开 MCP 连接。 |
 
 ## 4. 连接状态
 

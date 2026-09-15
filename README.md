@@ -52,7 +52,7 @@ Codex / Claude / MiniMax Design / Cursor / Generic MCP
 |:---|:---|
 | Product | PartMe Blender MCP |
 | MCP server ID | `partme_blender` |
-| Version | `0.1.0` prerelease |
+| Version | `0.1.1` prerelease |
 | MCP protocol | `2025-06-18` |
 | Harness compatibility | `codex-blender/v1` |
 | Blender | 4.2–5.2, only as verified per matrix |
@@ -90,11 +90,11 @@ Download Blender from the [official website](https://www.blender.org/download/) 
 
 ### 2. Download the release
 
-Download from [v0.1.0](https://github.com/partme-ai/blender-mcp/releases/tag/v0.1.0):
+Download from [v0.1.1](https://github.com/partme-ai/blender-mcp/releases/tag/v0.1.1):
 
 ```text
-partme-blender-mcp-addon-0.1.0.zip
-partme-blender-mcp-runtime-0.1.0.zip
+partme-blender-mcp-addon-0.1.1.zip
+partme-blender-mcp-runtime-0.1.1.zip
 SHA256SUMS.txt
 ```
 
@@ -102,18 +102,20 @@ Verify SHA-256 before installing.
 
 ### 3. Install the runtime
 
+For the simplest path, download the platform bundle, extract it, and run
+`install_partme_blender_mcp.command` on macOS or `install_partme_blender_mcp.bat` on Windows.
+The platform bundles are also valid Python projects, so an accidental pip install now works.
+
 ```bash
-python -m pip install ./partme-blender-mcp-runtime-0.1.0.zip
+python -m pip install ./partme-blender-mcp-runtime-0.1.1.zip
 python -m partme_blender_mcp --help
 ```
-
-Platform packages also contain `install_partme_blender_mcp.command` for macOS and `install_partme_blender_mcp.bat` for Windows.
 
 ### 4. Install the Blender Add-on
 
 1. Blender → **Edit → Preferences → Add-ons**.
 2. Top-right menu → **Install from Disk…**.
-3. Select `partme-blender-mcp-addon-0.1.0.zip` without extracting it.
+3. Select `partme-blender-mcp-addon-0.1.1.zip` without extracting it.
 4. Enable **PartMe Blender MCP**.
 5. Return to 3D View, press `N`, open **PartMe MCP**.
 6. Choose approved directories and click **Start MCP Server**.
@@ -162,7 +164,7 @@ Only proceed to mutations after both read-only checks succeed. Mutations use tra
 - Mutations carry the current `sceneRevision`.
 - One Blender session has one active writer by default.
 - Pause, Take Over, and Revoke invalidate old transactions and claims.
-- In `v0.1.0`, delete, overwrite, expert Python, and gated final export return `AUTHORIZATION_REQUIRED`; no generic MCP tool can mint approval.
+- Delete, overwrite, expert Python, and gated final export first return `AUTHORIZATION_REQUIRED`; only Blender's local UI can approve that exact request ID once, and no approval value is sent to the client.
 - Tool `annotations` are hints; the Harness is authoritative.
 
 Report vulnerabilities privately through [GitHub Security Advisories](https://github.com/partme-ai/blender-mcp/security/advisories/new).
@@ -174,7 +176,7 @@ Report vulnerabilities privately through [GitHub Security Advisories](https://gi
 | `BLENDER_NOT_CONNECTED` | No live Harness | Click Start MCP Server in Blender |
 | `AMBIGUOUS_SESSION` | Multiple Blender sessions | Bind the intended window |
 | `STALE_SCENE_REVISION` | Scene changed | Reinspect and start a new transaction |
-| `AUTHORIZATION_REQUIRED` | No trusted approval | Stop in `v0.1.0`; clients cannot self-assert confirmation |
+| `AUTHORIZATION_REQUIRED` | Waiting for a local decision | Review it in Blender, approve once or deny; clients cannot self-assert confirmation |
 | Incomplete tools | Pagination not followed | Continue with `nextCursor` |
 
 ## Development, verification, and release
@@ -224,14 +226,15 @@ installs as one package from either archive. See [CONTRIBUTING.md](CONTRIBUTING.
 
 ## Compatibility and migration
 
-`0.1.0` is a prerelease. The Harness keeps `codex-blender/v1` temporarily for differential migration from `codex-blender-plugin`; all public identity, MCP server ID, and Add-on surfaces use PartMe. Untested clients remain `DOCUMENTED_NOT_RUN`.
+`0.1.1` is a prerelease. The Harness keeps `codex-blender/v1` temporarily for differential migration from `codex-blender-plugin`; all public identity, MCP server ID, and Add-on surfaces use PartMe. Untested clients remain `DOCUMENTED_NOT_RUN`.
 
 ## Deep documentation
 
 - [Cross-client architecture](docs/superpowers/specs/2026-09-15-partme-blender-mcp-design.md)
 - [Illustrated setup center](docs/getting-started/README.zh-CN.md)
-- [v0.1.0 security review](docs/verification/security-review-0.1.0.md)
-- [v0.1.0 license compliance triage](docs/verification/license-compliance-0.1.0.md)
+- [v0.1.1 security review](docs/verification/security-review-0.1.1.md)
+- [v0.1.1 license compliance triage](docs/verification/license-compliance-0.1.1.md)
+- [v0.1.1 platform package installation evidence](docs/verification/platform-package-install-0.1.1.md)
 - [Generic MCP client handshake evidence](docs/verification/generic-mcp-handshake-2026-09-15.md)
 - [Brand assets and generation provenance](assets/brand/README.md)
 

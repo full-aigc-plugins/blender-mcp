@@ -3,7 +3,7 @@
 bl_info = {
     "name": "PartMe Blender MCP",
     "author": "PartMe.AI",
-    "version": (0, 1, 0),
+    "version": (0, 1, 1),
     "blender": (4, 2, 0),
     "location": "3D View > Sidebar > PartMe MCP",
     "description": "Expose Blender through the guarded PartMe MCP Harness",

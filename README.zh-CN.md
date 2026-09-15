@@ -52,7 +52,7 @@ Codex / Claude / MiniMax Design / Cursor / Generic MCP
 |:---|:---|
 | 产品 | PartMe Blender MCP |
 | MCP Server ID | `partme_blender` |
-| 当前版本 | `0.1.0` 预发布 |
+| 当前版本 | `0.1.1` 预发布 |
 | MCP 协议 | `2025-06-18` |
 | Harness 兼容协议 | `codex-blender/v1` |
 | Blender | 4.2–5.2，按真实验证矩阵声明 |
@@ -90,11 +90,11 @@ Codex / Claude / MiniMax Design / Cursor / Generic MCP
 
 ### 2. 下载 Release
 
-从 [v0.1.0](https://github.com/partme-ai/blender-mcp/releases/tag/v0.1.0)下载：
+从 [v0.1.1](https://github.com/partme-ai/blender-mcp/releases/tag/v0.1.1)下载：
 
 ```text
-partme-blender-mcp-addon-0.1.0.zip
-partme-blender-mcp-runtime-0.1.0.zip
+partme-blender-mcp-addon-0.1.1.zip
+partme-blender-mcp-runtime-0.1.1.zip
 SHA256SUMS.txt
 ```
 
@@ -102,21 +102,23 @@ SHA256SUMS.txt
 
 ### 3. 安装 Runtime
 
-```bash
-python -m pip install ./partme-blender-mcp-runtime-0.1.0.zip
-python -m partme_blender_mcp --help
-```
-
-也可使用平台包中的安装器：
+普通用户下载对应平台包，解压后双击安装器：
 
 - macOS：`install_partme_blender_mcp.command`
 - Windows：`install_partme_blender_mcp.bat`
+
+也可以直接用 pip 安装 Runtime 或平台包：
+
+```bash
+python -m pip install ./partme-blender-mcp-runtime-0.1.1.zip
+python -m partme_blender_mcp --help
+```
 
 ### 4. 安装 Blender Add-on
 
 1. Blender → **Edit → Preferences → Add-ons**。
 2. 右上角菜单 → **从磁盘安装…**。
-3. 选择 `partme-blender-mcp-addon-0.1.0.zip`，不要解压。
+3. 选择 `partme-blender-mcp-addon-0.1.1.zip`，不要解压。
 4. 启用 **PartMe Blender MCP**。
 5. 回到 3D View，按 `N`，打开 **PartMe MCP**。
 6. 选择授权目录，点击 **Start MCP Server**。
@@ -158,7 +160,7 @@ python -m partme_blender_mcp --help
 连接成功后调用 blender_scene_inspect，只读列出当前场景。
 ```
 
-通过后再要求创建对象。修改类工具需要事务；`v0.1.0` 不向通用 MCP Client 暴露授权签发工具，危险操作会被拒绝。
+通过后再要求创建对象。修改类工具需要事务；危险操作首次调用会被拒绝并出现在 Blender 的待批准列表，用户点击 **批准一次** 后，客户端才能用同一 request ID 重试。
 
 ## 安全、事务与恢复
 
@@ -167,7 +169,7 @@ python -m partme_blender_mcp --help
 - 修改命令携带最新 `sceneRevision`，防止覆盖人工操作。
 - 一个 Blender 默认只有一个主动写入客户端。
 - Pause/Take Over/Revoke 会使旧事务和授权失效。
-- `v0.1.0` 对删除、覆盖、专家 Python 和受门禁的最终导出返回 `AUTHORIZATION_REQUIRED`；本地审批 UI 完成前不提供绕过入口。
+- 删除、覆盖、专家 Python 和受门禁的最终导出先返回 `AUTHORIZATION_REQUIRED`；授权只能由 Blender 本地 UI 对具体 request ID 批准一次，批准值不会发给客户端。
 - `annotations` 仅是客户端提示，Harness 才是权限事实源。
 
 漏洞请使用 [GitHub Security Advisories](https://github.com/partme-ai/blender-mcp/security/advisories/new) 私下报告。
@@ -179,7 +181,7 @@ python -m partme_blender_mcp --help
 | `BLENDER_NOT_CONNECTED` | 没有活动 Harness | 在 N 面板点击 Start MCP Server |
 | `AMBIGUOUS_SESSION` | 多个 Blender 会话 | 明确绑定目标窗口 |
 | `STALE_SCENE_REVISION` | 场景已变化 | 重新检查并开启新事务 |
-| `AUTHORIZATION_REQUIRED` | 危险操作没有可信授权 | `v0.1.0` 停止该操作，不允许客户端自行声称已确认 |
+| `AUTHORIZATION_REQUIRED` | 危险操作等待本地决定 | 在 Blender 查看命令并选择“批准一次”或“拒绝”；客户端不能自行声称已确认 |
 | 工具列表不完整 | 未读取全部分页 | 跟随 `nextCursor` |
 
 ## 开发、测试与发布
@@ -207,14 +209,15 @@ blender-mcp/
 
 ## 兼容与迁移
 
-`0.1.0` 是预发布版本。Harness 暂时保留 `codex-blender/v1`，使现有 `codex-blender-plugin` 能进行差分迁移；新公共身份、MCP Server ID 和 Add-on 均使用 PartMe。未经验证的客户端保持 `DOCUMENTED_NOT_RUN`。
+`0.1.1` 是预发布版本。Harness 暂时保留 `codex-blender/v1`，使现有 `codex-blender-plugin` 能进行差分迁移；新公共身份、MCP Server ID 和 Add-on 均使用 PartMe。未经验证的客户端保持 `DOCUMENTED_NOT_RUN`。
 
 ## 深入文档
 
 - [跨客户端架构设计](docs/superpowers/specs/2026-09-15-partme-blender-mcp-design.md)
 - [图文安装中心](docs/getting-started/README.zh-CN.md)
-- [v0.1.0 安全审查](docs/verification/security-review-0.1.0.md)
-- [v0.1.0 许可证工程分诊](docs/verification/license-compliance-0.1.0.md)
+- [v0.1.1 安全审查](docs/verification/security-review-0.1.1.md)
+- [v0.1.1 许可证工程分诊](docs/verification/license-compliance-0.1.1.md)
+- [v0.1.1 平台安装包验证](docs/verification/platform-package-install-0.1.1.md)
 - [品牌资产与生成来源](assets/brand/README.md)
 
 ## 贡献与许可证

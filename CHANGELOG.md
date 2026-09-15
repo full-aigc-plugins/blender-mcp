@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-15
+
 ### Added
 
 - Local approval surface in Blender for gated commands: the session records each refused
@@ -42,6 +44,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- macOS and Windows platform bundles now place `pyproject.toml` and `src/` at the archive root, so
+  an accidental `python -m pip install <platform-bundle>` works instead of reporting that the archive
+  is not a Python project. Each bundle also includes `README-FIRST.txt` and the one-click installer.
+
 - The shared argument catalog had three duplicated keys (`points`, `resolution`,
   `targetObjectId`) where a vendor-uploader definition silently overrode the real one.
   `resolution` was published to clients as a string instead of the positive integer that
@@ -69,5 +75,6 @@ All notable changes to this project are documented here. The format follows
 - Cross-client guides (Codex, Claude Desktop, Claude Code, MiniMax Design, Cursor, generic
   MCP, macOS, Windows) with a documentation contract test.
 
-[Unreleased]: https://github.com/partme-ai/blender-mcp/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/partme-ai/blender-mcp/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/partme-ai/blender-mcp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/partme-ai/blender-mcp/releases/tag/v0.1.0
