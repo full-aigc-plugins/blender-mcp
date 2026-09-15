@@ -7,7 +7,6 @@ from .commands.camera import CameraCommands
 from .commands.light import LightCommands
 from .commands.material import MaterialCommands
 from .commands.object import ObjectCommands
-from .commands.official_uploader import OfficialUploaderCommands
 from .commands.scene import SceneCommands
 from .commands.view import ViewCommands
 from .commands.collection import OrganizationCommands
@@ -78,7 +77,6 @@ def build_registry(bpy_module, *, runtime_mode: str = "managed", approved_output
             _version_adapter = select_adapter(_identity, bpy_module)
     except HarnessError:
         _version_adapter = None
-    official = OfficialUploaderCommands(bpy_module, approved_output_root=approved_output_root, approved_asset_roots=approved_asset_roots)
     organization = OrganizationCommands(bpy_module)
     meshes = MeshCommands(bpy_module)
     modifiers = ModifierCommands(bpy_module)
@@ -389,12 +387,6 @@ def build_registry(bpy_module, *, runtime_mode: str = "managed", approved_output
     registry.register('rig.rigify_generate',rigs.rigify_generate,validate=closed_arguments(optional=('name','objectId')))
     registry.register("advanced.execute_python", advanced.execute, validate=closed_arguments(required=("script",)), risk="gated",
                       metadata={'class': 'expert'})
-    if runtime_mode == "connector":
-        registry.register("official_uploader.inspect", official.inspect, validate=closed_arguments(), risk="read")
-        registry.register("official_uploader.status", official.status, validate=closed_arguments(), risk="read")
-        registry.register("official_uploader.render_and_link", official.render_and_link, validate=closed_arguments(required=("camera", "frameStart", "frameEnd", "outputDir"), optional=("resolution", "prompt")), risk="gated")
-        registry.register("official_uploader.link_existing", official.link_existing, validate=closed_arguments(required=("videoPath",), optional=("prompt",)), risk="gated")
-        registry.register("official_uploader.open_link", official.open_link, validate=closed_arguments(), risk="gated")
     def capture_preview(arguments):
         from .errors import HarnessError
         if approved_output_root is None:
