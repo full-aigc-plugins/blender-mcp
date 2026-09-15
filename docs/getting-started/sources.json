@@ -1,0 +1,41 @@
+{
+  "product": "PartMe Blender MCP",
+  "releaseUrl": "https://github.com/partme-ai/blender-mcp/releases/latest",
+  "blenderDownloadUrl": "https://www.blender.org/download/",
+  "blenderManualUrl": "https://docs.blender.org/manual/en/latest/advanced/blender_directory_layout.html",
+  "mcpProtocolUrl": "https://modelcontextprotocol.io/specification/2025-06-18",
+  "reviewedAt": "2026-09-15",
+  "clients": {
+    "codex": {
+      "source": "Local codex mcp add --help",
+      "status": "VERIFIED"
+    },
+    "claudeDesktop": {
+      "source": "https://support.anthropic.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop",
+      "status": "DOCUMENTED_NOT_RUN"
+    },
+    "claudeCode": {
+      "source": "https://code.claude.com/docs/en/mcp",
+      "status": "DOCUMENTED_NOT_RUN"
+    },
+    "minimaxDesign": {
+      "source": "User-provided Add Custom Connector and transport screenshots",
+      "status": "DOCUMENTED_NOT_RUN"
+    },
+    "cursor": {
+      "source": "https://docs.cursor.com/context/model-context-protocol",
+      "status": "DOCUMENTED_NOT_RUN"
+    },
+    "generic": {
+      "source": "https://modelcontextprotocol.io/specification/2025-06-18",
+      "status": "DOCUMENTED_NOT_RUN"
+    }
+  },
+  "assets": [
+    "../assets/reference/blender-open-preferences.png",
+    "../assets/reference/blender-install-from-disk.png",
+    "../assets/reference/blender-addon-location-community-example.png",
+    "../assets/reference/minimax-design-add-custom-connector.png",
+    "../assets/reference/minimax-design-transport-options.png"
+  ]
+}
