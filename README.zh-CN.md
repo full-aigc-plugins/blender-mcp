@@ -48,6 +48,23 @@ Codex / Claude / MiniMax Design / Cursor / Generic MCP
 
 ![PartMe Blender MCP Architecture](assets/brand/architecture.png)
 
+## 视觉概览
+
+横向封面展示从 Prompt、Code、Assets 和 MCP 工具调用到可编辑 Blender 场景的完整路径；
+方形内容图进一步拆解场景检查、建模、材质、动画和渲染的编排闭环。它们用于说明产品工作流，
+不替代后文的运行时、安全和兼容性验证证据。
+
+![Blender MCP 横向封面](assets/brand/blender-mcp-cover-v3.png)
+
+![Blender MCP 工作流内容图](assets/brand/blender-mcp-content-v3.png)
+
+安全与恢复组图重点呈现中立客户端汇聚、受保护的前台 Blender 执行、快照、回滚、人工接管
+和可验证导出。
+
+![Blender MCP 安全与恢复封面](assets/brand/cover-v2.png)
+
+![Blender MCP 受控工作流内容图](assets/brand/content-v2.png)
+
 | 项目属性 | 值 |
 |:---|:---|
 | 产品 | PartMe Blender MCP |

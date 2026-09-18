@@ -48,6 +48,24 @@ Codex / Claude / MiniMax Design / Cursor / Generic MCP
 
 ![PartMe Blender MCP architecture](assets/brand/architecture.png)
 
+## Visual overview
+
+The marketing cover summarizes the complete path from prompt, code, assets, and MCP tool calls to an
+editable Blender scene. The content illustration expands that path into scene inspection, modeling,
+materials, animation, and rendering. These images explain the product workflow; they do not replace
+the runtime, security, or compatibility evidence documented below.
+
+![Blender MCP cover](assets/brand/blender-mcp-cover-v3.png)
+
+![Blender MCP workflow](assets/brand/blender-mcp-content-v3.png)
+
+The safety-and-recovery set focuses on vendor-neutral client convergence, guarded foreground Blender
+execution, snapshots, rollback, manual takeover, and verified exports.
+
+![Blender MCP safety and recovery cover](assets/brand/cover-v2.png)
+
+![Blender MCP controlled workflow](assets/brand/content-v2.png)
+
 | Property | Value |
 |:---|:---|
 | Product | PartMe Blender MCP |
