@@ -8,7 +8,6 @@ archive is only importable if relative imports resolve inside it.
 
 import ast
 import importlib.util
-import re
 import sys
 import unittest
 from pathlib import Path
