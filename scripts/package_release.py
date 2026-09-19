@@ -142,6 +142,13 @@ def build(output: Path) -> list[Path]:
     write_zip(output / addon_name, addon_entries_list)
     write_zip(output / runtime_name, repository_entries())
 
+    community_name = "partme-community-addon-2.0.0.zip"
+    community_root = ROOT / "vendor/community/blender_mcp_community"
+    write_zip(output / community_name, [
+        (path, f"blender_mcp_community/{path.relative_to(community_root).as_posix()}")
+        for path in files_under(community_root)
+    ])
+
     mac_installer = ROOT / "installers/macos/install_partme_blender_mcp.command"
     platform_common = repository_entries()
     write_tar_gz(output / mac_name, [
@@ -173,7 +180,7 @@ def build(output: Path) -> list[Path]:
         "python": "3.11-3.13",
         "blender": "4.2-5.2",
         "status": "prerelease",
-        "artifacts": [addon_name, runtime_name, mac_name, windows_name],
+        "artifacts": [addon_name, runtime_name, community_name, mac_name, windows_name],
     }
     manifest_path = output / "runtime-manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -204,7 +211,8 @@ def build(output: Path) -> list[Path]:
         output / mac_name,
         output / windows_name,
         manifest_path,
-        sbom_path,
+        sbom_path,,
+        output / community_name,
     ]
     sums_path = output / "SHA256SUMS.txt"
     sums_path.write_text(
