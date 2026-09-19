@@ -211,7 +211,7 @@ def build(output: Path) -> list[Path]:
         output / mac_name,
         output / windows_name,
         manifest_path,
-        sbom_path,,
+        sbom_path,
         output / community_name,
     ]
     sums_path = output / "SHA256SUMS.txt"

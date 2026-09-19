@@ -112,18 +112,33 @@ class VIEW3D_PT_partme_blender_mcp(bpy.types.Panel):
     def draw(self, _context):
         layout = self.layout
         handle = runtime.current()
-        if runtime.is_running() and handle is not None:
-            layout.label(text="Connected", icon="LINKED")
-            layout.label(text=f"Scene revision {handle.session.scene_revision}")
-            _draw_approvals(layout, handle)
-            layout.operator(PARTMEBLENDER_OT_revoke.bl_idname, icon="CANCEL")
+        running = runtime.is_running() and handle is not None
+
+        # ── 功能区 1：连接状态 ─────────────────────────────
+        box = layout.box()
+        if running:
+            box.label(text="已连接", icon="LINKED")
+            box.label(text=f"场景版本 {handle.session.scene_revision}", icon="DOT")
+            box.operator(PARTMEBLENDER_OT_revoke.bl_idname, icon="CANCEL", text="断开连接")
         else:
-            layout.label(text="Not connected", icon="UNLINKED")
-            layout.prop(bpy.context.scene, "partme_blender_output_root", text="Output")
-            layout.prop(bpy.context.scene, "partme_blender_asset_root", text="Assets")
-            layout.prop(bpy.context.scene, "partme_blender_execution_mode", text="Mode")
-            layout.prop(bpy.context.scene, "partme_blender_allow_proxies", text="Design missing assets")
-            layout.operator(PARTMEBLENDER_OT_start.bl_idname, icon="PLAY")
+            box.label(text="未连接", icon="UNLINKED")
+            box.operator(PARTMEBLENDER_OT_start.bl_idname, icon="PLAY", text="启动 MCP 连接")
+
+        # ── 功能区 2：审批请求（连接中出现待审项才显示）────
+        if running:
+            _draw_approvals(layout, handle)
+
+        # ── 功能区 3：授权目录 ─────────────────────────────
+        box = layout.box()
+        box.label(text="授权目录", icon="FILE_FOLDER")
+        box.prop(bpy.context.scene, "partme_blender_output_root", text="输出目录（AI 导出仅限此处）")
+        box.prop(bpy.context.scene, "partme_blender_asset_root", text="素材目录（AI 导入仅限此处）")
+
+        # ── 功能区 4：执行模式 ─────────────────────────────
+        box = layout.box()
+        box.label(text="执行模式", icon="SETTINGS")
+        box.prop(bpy.context.scene, "partme_blender_execution_mode", text="模式")
+        box.prop(bpy.context.scene, "partme_blender_allow_proxies", text="允许设计缺失素材的替身")
 
 
 CLASSES = (PARTMEBLENDER_OT_start, PARTMEBLENDER_OT_revoke, PARTMEBLENDER_OT_approve_request,
