@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows
   switches, task progress/cancellation, directed settings and retained viewport shortcuts.
 - Official MCP Python SDK transports for stdio, Streamable HTTP and compatibility SSE,
   with independent remote listener lifecycles and live client counts.
+- Protected Bearer Token configuration and strong one-time token generation in the Access
+  tab, with rotation blocked while HTTP or SSE listeners are active.
 - Guarded staging for generated GLB/GLTF/FBX/OBJ and ZIP results under approved asset
   roots, including archive traversal, symlink, type, file-count and size checks.
 

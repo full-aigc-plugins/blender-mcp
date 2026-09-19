@@ -43,19 +43,27 @@ def wait_for(predicate, seconds=12):
     raise RuntimeError("timed out waiting for remote transport state")
 
 
-def client_process(transport, address, report_path):
+def client_process(transport, address, report_path, token):
     client_import = (
         "from mcp.client.streamable_http import streamable_http_client as connect"
         if transport == "streamable-http"
         else "from mcp.client.sse import sse_client as connect"
+    )
+    http_import = "import httpx2" if transport == "streamable-http" else ""
+    connect_args = (
+        f"{address!r}, http_client=http_client"
+        if transport == "streamable-http"
+        else f"{address!r}, headers={{'Authorization': 'Bearer ' + {token!r}}}"
     )
     source = f"""
 import anyio, json
 from pathlib import Path
 from mcp import ClientSession
 {client_import}
+{http_import}
 async def main():
-    async with connect({address!r}) as streams:
+    http_client = httpx2.AsyncClient(headers={{'Authorization': 'Bearer ' + {token!r}}}) if {transport == 'streamable-http'!r} else None
+    async with connect({connect_args}) as streams:
         async with ClientSession(streams[0], streams[1]) as session:
             initialized = await session.initialize()
             result = await session.call_tool('blender_connection_status', {{}})
@@ -79,6 +87,10 @@ preferences.remote_host = "127.0.0.1"
 preferences.http_port = free_port()
 preferences.sse_port = free_port()
 preferences.remote_token = ""
+report["tokenGenerate"] = list(bpy.ops.partme_blender.generate_remote_token())
+token = preferences.remote_token
+report["tokenConfigured"] = bool(token)
+report["tokenShape"] = len(token) >= 43
 
 output_root = Path(tempfile.mkdtemp(prefix="pbm-remote-out-"))
 bpy.context.scene.partme_blender_output_root = str(output_root)
@@ -105,8 +117,8 @@ report["sseAddress"] = sse_state["address"]
 
 temp_root = Path(tempfile.mkdtemp(prefix="pbm-remote-client-"))
 http_report, sse_report = temp_root / "http.json", temp_root / "sse.json"
-http_client = client_process("streamable-http", http_state["address"], http_report)
-sse_client_process = client_process("sse", sse_state["address"], sse_report)
+http_client = client_process("streamable-http", http_state["address"], http_report, token)
+sse_client_process = client_process("sse", sse_state["address"], sse_report, token)
 wait_for(lambda: http_report.is_file() and sse_report.is_file())
 
 
@@ -153,6 +165,9 @@ required = {
     "startResult": ["FINISHED"],
     "stdioRefresh": ["FINISHED"],
     "stdioState": "ready",
+    "tokenGenerate": ["FINISHED"],
+    "tokenConfigured": True,
+    "tokenShape": True,
     "httpStart": ["FINISHED"],
     "sseStart": ["FINISHED"],
     "httpStoppedAlone": True,

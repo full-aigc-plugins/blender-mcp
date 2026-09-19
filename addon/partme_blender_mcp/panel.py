@@ -2,6 +2,7 @@
 
 import json
 import os
+import secrets
 import shutil
 import sys
 from pathlib import Path
@@ -214,7 +215,10 @@ class PARTMEBLENDER_Preferences(bpy.types.AddonPreferences):
         box.prop(self, "message_path")
         box.prop(self, "public_base_url")
         box.prop(self, "issuer_url")
-        box.prop(self, "remote_token")
+        box.prop(self, "remote_token", text="Bearer Token")
+        row = box.row(align=True)
+        row.operator(PARTMEBLENDER_OT_configure_remote_token.bl_idname, text="配置 Token", icon="LOCKED")
+        row.operator(PARTMEBLENDER_OT_generate_remote_token.bl_idname, text="生成新 Token", icon="FILE_REFRESH")
         box.prop(self, "tls_certfile")
         box.prop(self, "tls_keyfile")
         row = box.row(align=True)
@@ -433,6 +437,77 @@ class PARTMEBLENDER_OT_remote_settings(bpy.types.Operator):
 
     def execute(self, _context):
         _open_addon_preferences(__package__)
+        return {"FINISHED"}
+
+
+def _running_remote_transports(preferences):
+    from .remote import manager
+    return [
+        label for transport, label in (("streamable-http", "HTTP"), ("sse", "SSE"))
+        if manager().snapshot(preferences, transport)["running"]
+    ]
+
+
+class PARTMEBLENDER_OT_configure_remote_token(bpy.types.Operator):
+    bl_idname = "partme_blender.configure_remote_token"
+    bl_label = "配置远程访问 Token"
+    bl_description = "设置 HTTP/SSE 客户端使用的 Bearer Token；Token 不会写入 URL、场景或回执"
+
+    remote_token: bpy.props.StringProperty(
+        name="Bearer Token",
+        subtype="PASSWORD",
+        description="HTTP/SSE 客户端通过 Authorization: Bearer <token> 发送此凭证",
+    )
+
+    def invoke(self, context, _event):
+        preferences = _addon_preferences(context)
+        if preferences is None:
+            self.report({"ERROR"}, "无法读取 Add-on 设置")
+            return {"CANCELLED"}
+        self.remote_token = preferences.remote_token
+        return context.window_manager.invoke_props_dialog(self, width=420)
+
+    def draw(self, _context):
+        layout = self.layout
+        layout.prop(self, "remote_token", text="Bearer Token")
+        layout.label(text="客户端使用 Authorization: Bearer <token>", icon="LOCKED")
+        layout.label(text="不会拼入地址，也不会写入场景或回执", icon="INFO")
+
+    def execute(self, context):
+        preferences = _addon_preferences(context)
+        if preferences is None:
+            self.report({"ERROR"}, "无法读取 Add-on 设置")
+            return {"CANCELLED"}
+        running = _running_remote_transports(preferences)
+        if running and self.remote_token != preferences.remote_token:
+            self.report({"ERROR"}, f"请先关闭 {'、'.join(running)}，再修改 Token")
+            return {"CANCELLED"}
+        preferences.remote_token = self.remote_token.strip()
+        self.report({"INFO"}, "远程访问 Token 已保存" if preferences.remote_token else "远程访问 Token 已清除")
+        return {"FINISHED"}
+
+
+class PARTMEBLENDER_OT_generate_remote_token(bpy.types.Operator):
+    bl_idname = "partme_blender.generate_remote_token"
+    bl_label = "生成新 Token"
+    bl_description = "生成强随机 Bearer Token 并仅在本次操作后复制到剪贴板"
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
+
+    def execute(self, context):
+        preferences = _addon_preferences(context)
+        if preferences is None:
+            self.report({"ERROR"}, "无法读取 Add-on 设置")
+            return {"CANCELLED"}
+        running = _running_remote_transports(preferences)
+        if running:
+            self.report({"ERROR"}, f"请先关闭 {'、'.join(running)}，再轮换 Token")
+            return {"CANCELLED"}
+        token = secrets.token_urlsafe(32)
+        preferences.remote_token = token
+        context.window_manager.clipboard = token
+        self.report({"INFO"}, "新 Token 已保存并复制；请立即粘贴到客户端配置")
         return {"FINISHED"}
 
 
@@ -678,8 +753,21 @@ def _draw_access_tab(layout, context, running):
         layout, preferences, "streamable-http", "Streamable HTTP", service_running=running,
     )
     _draw_remote_transport(layout, preferences, "sse", "SSE（兼容）", service_running=running)
-    layout.label(text="远程访问需鉴权与 HTTPS", icon="LOCKED")
-    layout.operator(PARTMEBLENDER_OT_remote_settings.bl_idname, text="远程设置", icon="PREFERENCES")
+    auth = layout.box()
+    row = auth.row(align=True)
+    row.label(text="Bearer Token", icon="LOCKED")
+    configured = bool(preferences.remote_token)
+    row.label(text="已配置" if configured else "未配置", icon="CHECKMARK" if configured else "ERROR")
+    row = auth.row(align=True)
+    row.operator(PARTMEBLENDER_OT_configure_remote_token.bl_idname, text="配置 Token", icon="PREFERENCES")
+    row.operator(
+        PARTMEBLENDER_OT_generate_remote_token.bl_idname,
+        text="重新生成" if configured else "生成 Token",
+        icon="FILE_REFRESH",
+    )
+    auth.label(text="非本机绑定必须鉴权；Token 不会写入复制地址", icon="INFO")
+    auth.label(text="生成后仅复制一次；轮换前须关闭 HTTP/SSE", icon="LOCKED")
+    layout.operator(PARTMEBLENDER_OT_remote_settings.bl_idname, text="完整远程设置", icon="PREFERENCES")
 
 
 def _attention(provider_snapshot, preferences, handle):
@@ -768,6 +856,8 @@ CLASSES = (
     PARTMEBLENDER_OT_cancel_provider_task,
     PARTMEBLENDER_OT_execution_settings,
     PARTMEBLENDER_OT_remote_settings,
+    PARTMEBLENDER_OT_configure_remote_token,
+    PARTMEBLENDER_OT_generate_remote_token,
     PARTMEBLENDER_OT_switch_tab,
     PARTMEBLENDER_OT_refresh_access,
     PARTMEBLENDER_OT_toggle_remote,

@@ -239,6 +239,11 @@ class ProviderPanelContractTests(unittest.TestCase):
         self.assertIn("自动搜索与生成", panel)
         self.assertIn("供应商可用", panel)
         self.assertIn("layout.progress", panel)
+        self.assertIn("PARTMEBLENDER_OT_configure_remote_token", panel)
+        self.assertIn("PARTMEBLENDER_OT_generate_remote_token", panel)
+        self.assertIn("secrets.token_urlsafe(32)", panel)
+        self.assertIn("Authorization: Bearer <token>", panel)
+        self.assertIn("Token 不会写入复制地址", panel)
         for label in ("相机", "正面", "侧面", "顶面", "播放 / 暂停动画", "快捷操作"):
             self.assertIn(label, panel)
         self.assertNotIn('box.label(text="无待批准操作"', panel)
