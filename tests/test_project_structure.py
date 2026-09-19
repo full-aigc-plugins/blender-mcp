@@ -125,12 +125,17 @@ class LayoutTests(unittest.TestCase):
         finally:
             sys.path.pop(0)
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-        declared = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.MULTILINE).group(1)
-        self.assertEqual(__version__, declared)
+        self.assertIn('dynamic = ["version"]', pyproject)
+        self.assertIn('version = {attr = "partme_blender_mcp.harness.version.__version__"}', pyproject)
         self.assertEqual(__version__, ".".join(str(part) for part in VERSION_TUPLE))
         addon_init = (ADDON / "__init__.py").read_text(encoding="utf-8")
-        bl_version = ast.literal_eval(re.search(r'"version":\s*(\([^)]*\))', addon_init).group(1))
-        self.assertEqual(bl_version, VERSION_TUPLE, "bl_info version drifted from harness/version.py")
+        import ast
+        from partme_blender_mcp.harness.version import VERSION_TUPLE
+        tree = ast.parse(addon_init)
+        assignment = next(node for node in tree.body if isinstance(node, ast.Assign)
+                          and any(isinstance(target, ast.Name) and target.id == "bl_info"
+                                  for target in node.targets))
+        self.assertEqual(ast.literal_eval(assignment.value)["version"], VERSION_TUPLE)
 
 
 class ArchiveIntegrityTests(unittest.TestCase):

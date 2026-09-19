@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-version="0.1.1"
+version="0.3.0"
 dry_run="false"
 case "${1:-}" in
   --version) printf 'PartMe Blender MCP installer %s\n' "$version"; exit 0 ;;

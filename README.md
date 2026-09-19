@@ -23,7 +23,7 @@ PartMe Blender MCP translates standard MCP `stdio` requests into Blender operati
 | Problem | PartMe Blender MCP | Evidence entry |
 |:---|:---|:---|
 | A different Blender plugin per client | One neutral Add-on and MCP runtime | `partme_blender` |
-| Arbitrary Python is hard to audit | 164 closed Blender commands; expert Python is not exposed | `blender_capability_list` |
+| Arbitrary Python is hard to audit | 168 closed Blender commands; expert Python is not exposed | `blender_capability_list` |
 | Human edits can be overwritten | `sceneRevision`, transactions, takeover invalidation | `blender_connection_status` |
 | Export failure loses context | Snapshots, rollback, background jobs, receipts | `blender_job_status` |
 | Setup is fragmented | Separate platform and client guides | [Setup center](docs/getting-started/README.zh-CN.md) |
@@ -70,7 +70,7 @@ execution, snapshots, rollback, manual takeover, and verified exports.
 |:---|:---|
 | Product | PartMe Blender MCP |
 | MCP server ID | `partme_blender` |
-| Version | `0.1.1` prerelease |
+| Version | `0.3.0` release |
 | MCP protocol | `2025-06-18` |
 | Harness compatibility | `codex-blender/v1` |
 | Blender | 4.2–5.2, only as verified per matrix |
@@ -108,11 +108,11 @@ Download Blender from the [official website](https://www.blender.org/download/) 
 
 ### 2. Download the release
 
-Download from [v0.1.1](https://github.com/partme-ai/blender-mcp/releases/tag/v0.1.1):
+Download from [v0.3.0](https://github.com/full-aigc-plugins/blender-mcp/releases/tag/v0.3.0):
 
 ```text
-partme-blender-mcp-addon-0.1.1.zip
-partme-blender-mcp-runtime-0.1.1.zip
+partme-blender-mcp-addon-0.3.0.zip
+partme-blender-mcp-runtime-0.3.0.zip
 SHA256SUMS.txt
 ```
 
@@ -125,7 +125,7 @@ For the simplest path, download the platform bundle, extract it, and run
 The platform bundles are also valid Python projects, so an accidental pip install now works.
 
 ```bash
-python -m pip install ./partme-blender-mcp-runtime-0.1.1.zip
+python -m pip install ./partme-blender-mcp-runtime-0.3.0.zip
 python -m partme_blender_mcp --help
 ```
 
@@ -133,7 +133,7 @@ python -m partme_blender_mcp --help
 
 1. Blender → **Edit → Preferences → Add-ons**.
 2. Top-right menu → **Install from Disk…**.
-3. Select `partme-blender-mcp-addon-0.1.1.zip` without extracting it.
+3. Select `partme-blender-mcp-addon-0.3.0.zip` without extracting it.
 4. Enable **PartMe Blender MCP**.
 5. Return to 3D View, press `N`, open **PartMe MCP**.
 6. Choose approved directories and click **Start MCP Server**.
@@ -185,7 +185,7 @@ Only proceed to mutations after both read-only checks succeed. Mutations use tra
 - Delete, overwrite, expert Python, and gated final export first return `AUTHORIZATION_REQUIRED`; only Blender's local UI can approve that exact request ID once, and no approval value is sent to the client.
 - Tool `annotations` are hints; the Harness is authoritative.
 
-Report vulnerabilities privately through [GitHub Security Advisories](https://github.com/partme-ai/blender-mcp/security/advisories/new).
+Report vulnerabilities privately through [GitHub Security Advisories](https://github.com/full-aigc-plugins/blender-mcp/security/advisories/new).
 
 ## Errors and troubleshooting
 
@@ -244,15 +244,15 @@ installs as one package from either archive. See [CONTRIBUTING.md](CONTRIBUTING.
 
 ## Compatibility and migration
 
-`0.1.1` is a prerelease. The Harness keeps `codex-blender/v1` temporarily for differential migration from `codex-blender-plugin`; all public identity, MCP server ID, and Add-on surfaces use PartMe. Untested clients remain `DOCUMENTED_NOT_RUN`.
+`0.3.0` is the current release. The Harness keeps `codex-blender/v1` temporarily for differential migration from `codex-blender-plugin`; all public identity, MCP server ID, and Add-on surfaces use PartMe. Untested clients remain `DOCUMENTED_NOT_RUN`.
 
 ## Deep documentation
 
 - [Cross-client architecture](docs/superpowers/specs/2026-09-15-partme-blender-mcp-design.md)
 - [Illustrated setup center](docs/getting-started/README.zh-CN.md)
-- [v0.1.1 security review](docs/verification/security-review-0.1.1.md)
-- [v0.1.1 license compliance triage](docs/verification/license-compliance-0.1.1.md)
-- [v0.1.1 platform package installation evidence](docs/verification/platform-package-install-0.1.1.md)
+- [Historical v0.1.1 security review](docs/verification/security-review-0.1.1.md)
+- [Historical v0.1.1 license compliance triage](docs/verification/license-compliance-0.1.1.md)
+- [Historical v0.1.1 platform package installation evidence](docs/verification/platform-package-install-0.1.1.md)
 - [Generic MCP client handshake evidence](docs/verification/generic-mcp-handshake-2026-09-15.md)
 - [Brand assets and generation provenance](assets/brand/README.md)
 

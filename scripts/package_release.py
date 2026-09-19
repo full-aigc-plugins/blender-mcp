@@ -179,7 +179,7 @@ def build(output: Path) -> list[Path]:
         "harnessProtocol": "codex-blender/v1",
         "python": "3.11-3.13",
         "blender": "4.2-5.2",
-        "status": "prerelease",
+        "status": "release",
         "artifacts": [addon_name, runtime_name, community_name, mac_name, windows_name],
     }
     manifest_path = output / "runtime-manifest.json"
@@ -190,13 +190,13 @@ def build(output: Path) -> list[Path]:
         "dataLicense": "CC0-1.0",
         "SPDXID": "SPDXRef-DOCUMENT",
         "name": f"partme-blender-mcp-{release_version}",
-        "documentNamespace": f"https://github.com/partme-ai/blender-mcp/releases/tag/v{release_version}",
+        "documentNamespace": f"https://github.com/full-aigc-plugins/blender-mcp/releases/tag/v{release_version}",
         "creationInfo": {"created": "2026-09-15T00:00:00Z", "creators": ["Organization: PartMe.AI"]},
         "packages": [{
             "name": "partme-blender-mcp",
             "SPDXID": "SPDXRef-Package",
             "versionInfo": release_version,
-            "downloadLocation": "https://github.com/partme-ai/blender-mcp",
+            "downloadLocation": "https://github.com/full-aigc-plugins/blender-mcp",
             "licenseConcluded": "Apache-2.0",
             "licenseDeclared": "Apache-2.0",
             "filesAnalyzed": False,

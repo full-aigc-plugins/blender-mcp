@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 
 from .errors import HarnessError
+from .version import __version__
 from .frame_pipeline import (
     build_compose_command,
     inspect_frame_sequence,
@@ -53,7 +54,7 @@ def render_frame_sequence(bpy_module, task_dir: Path, spec: dict, status_writer=
     base_manifest = {
         "receiptVersion": "3.0.0",
         "protocolVersion": "codex-blender/v1",
-        "producer": {"name": "partme-blender-mcp", "version": "0.1.1"},
+        "producer": {"name": "partme-blender-mcp", "version": __version__},
         "jobId": spec["jobId"],
         "snapshotSha256": spec["snapshot"]["sha256"],
         "frameStart": parameters["frameStart"],
@@ -195,7 +196,7 @@ def compose_video(task_dir: Path, spec: dict, *, runner=subprocess.run, ffmpeg_p
     else:
         media = video_probe(target)
     return {"receiptVersion": "3.0.0", "protocolVersion": "codex-blender/v1",
-            "producer": {"name": "partme-blender-mcp", "version": "0.1.1"}, "jobId": spec["jobId"],
+            "producer": {"name": "partme-blender-mcp", "version": __version__}, "jobId": spec["jobId"],
             "path": str(target), "format": "mp4", "bytes": target.stat().st_size,
             "sha256": sha256_file(target), "sourceSequence": source, "media": media,
             "validation": {"status": "passed", "checks": ["source_manifest", "frame_hashes", "ffmpeg", "ffprobe"]}}

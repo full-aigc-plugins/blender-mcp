@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.1.1"
+VERSION = "0.3.0"
 
 
 class RepositoryStructureTests(unittest.TestCase):
@@ -87,7 +87,7 @@ class RuntimeContractTests(unittest.TestCase):
         finally:
             sys.path.pop(0)
         commands = [tool for tool in tools if tool.get("_meta", {}).get("codexBlenderCommand")]
-        self.assertEqual(len(commands), 164)
+        self.assertEqual(len(commands), 168)
         self.assertFalse(any("official_uploader" in tool["name"] for tool in commands))
         self.assertNotIn("blender_advanced_execute_python", {tool["name"] for tool in commands})
         self.assertNotIn("blender_authorize", {tool["name"] for tool in tools})
@@ -99,7 +99,7 @@ class RuntimeContractTests(unittest.TestCase):
             cwd=ROOT, env=env, capture_output=True, text=True, timeout=5,
         )
         self.assertEqual(version.returncode, 0, version.stderr)
-        self.assertEqual(version.stdout.strip(), "PartMe Blender MCP 0.1.1")
+        self.assertEqual(version.stdout.strip(), f"PartMe Blender MCP {VERSION}")
         help_result = subprocess.run(
             [sys.executable, "-m", "partme_blender_mcp", "--help"],
             cwd=ROOT, env=env, capture_output=True, text=True, timeout=5,
@@ -134,6 +134,7 @@ class ReleasePackageTests(unittest.TestCase):
                 "runtime-manifest.json",
                 "SHA256SUMS.txt",
                 "SBOM.spdx.json",
+                "partme-community-addon-2.0.0.zip",
             }
             self.assertEqual({path.name for path in output.iterdir()}, names)
             sums = {}

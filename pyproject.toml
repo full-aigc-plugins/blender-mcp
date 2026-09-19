@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "partme-blender-mcp"
-version = "0.1.1"
+dynamic = ["version"]
 description = "Secure cross-client MCP runtime and Blender Add-on"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -25,14 +25,17 @@ dependencies = []
 dev = ["ruff==0.16.7"]
 
 [project.urls]
-Homepage = "https://github.com/partme-ai/blender-mcp"
-Issues = "https://github.com/partme-ai/blender-mcp/issues"
+Homepage = "https://github.com/full-aigc-plugins/blender-mcp"
+Issues = "https://github.com/full-aigc-plugins/blender-mcp/issues"
 
 [project.scripts]
 partme-blender-mcp = "partme_blender_mcp.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.dynamic]
+version = {attr = "partme_blender_mcp.harness.version.__version__"}
 
 [tool.ruff]
 target-version = "py311"

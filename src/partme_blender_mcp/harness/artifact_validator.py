@@ -6,6 +6,7 @@ import hashlib
 from pathlib import Path
 
 from .errors import HarnessError
+from .version import __version__
 
 
 def sha256_file(path: Path) -> str:
@@ -33,7 +34,7 @@ def artifact_receipt(
         raise HarnessError("ARTIFACT_INVALID", f"artifact is missing or empty: {path}")
     return {
         "protocolVersion": "codex-blender/v1",
-        "producer": {"name": "partme-blender-mcp", "version": "0.1.1"},
+        "producer": {"name": "partme-blender-mcp", "version": __version__},
         "sessionId": session_id,
         "sceneRevision": int(scene_revision),
         "snapshotId": snapshot_id,

@@ -33,7 +33,7 @@ CONTROL_TOOLS = {
     "blender_transaction_commit": "transaction.commit",
     "blender_transaction_rollback": "transaction.rollback",
 }
-PUBLIC_EXCLUDED_COMMANDS = {"advanced.execute_python"}
+PUBLIC_EXCLUDED_COMMANDS = {"advanced.execute_python", "provider.external_action"}
 
 
 class McpAdapterError(RuntimeError):

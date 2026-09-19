@@ -17,7 +17,7 @@ DOMAINS = (
     'grease_pencil', 'tracking', 'sequence', 'validation', 'job',
     'session', 'capability', 'view', 'playback', 'preview', 'export',
     'advanced', 'official_uploader',
-    'recipe', 'production', 'retopo',
+    'recipe', 'production', 'retopo', 'provider',
 )
 
 

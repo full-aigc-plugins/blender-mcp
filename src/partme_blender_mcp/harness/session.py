@@ -57,6 +57,7 @@ INSPECTION_COMMANDS = {
 }
 READ_ONLY_COMMANDS.update(INSPECTION_COMMANDS | {"session.resume"})
 GATED_COMMANDS = {
+    "provider.external_action",
     "session.resume",
     "object.delete",
     "scene.new",

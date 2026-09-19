@@ -1,6 +1,7 @@
 """Visible Connector controls in Blender's 3D View sidebar."""
 
 import bpy
+from pathlib import Path
 
 from . import runtime
 
@@ -84,6 +85,36 @@ class PARTMEBLENDER_OT_deny_request(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class PARTMEBLENDER_OT_refresh_providers(bpy.types.Operator):
+    bl_idname = "partme_blender.refresh_providers"
+    bl_label = "刷新供应商状态"
+
+    def execute(self, _context):
+        from .harness.provider_registry import reload_provider_registry
+        try:
+            registry = reload_provider_registry(Path(__file__).with_name("providers.json"))
+        except Exception as exc:
+            self.report({"WARNING"}, f"供应商目录无效：{exc}")
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"已刷新 {len(registry.snapshot()['providers'])} 个供应商")
+        return {"FINISHED"}
+
+
+class PARTMEBLENDER_OT_provider_settings(bpy.types.Operator):
+    bl_idname = "partme_blender.provider_settings"
+    bl_label = "配置供应商"
+    provider_id: bpy.props.StringProperty()
+
+    def execute(self, _context):
+        try:
+            bpy.ops.screen.userpref_show("INVOKE_DEFAULT")
+        except Exception as exc:
+            self.report({"WARNING"}, f"无法打开 Blender 偏好设置：{exc}")
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"请在 Add-ons 中配置 {self.provider_id}")
+        return {"FINISHED"}
+
+
 def _draw_approvals(layout, handle):
     """Gated commands refused by the Harness wait here for a local decision."""
     pending = handle.session.pending_authorizations()
@@ -128,21 +159,94 @@ class VIEW3D_PT_partme_blender_mcp(bpy.types.Panel):
         if running:
             _draw_approvals(layout, handle)
 
-        # ── 功能区 3：授权目录 ─────────────────────────────
+
+
+class VIEW3D_PT_partme_blender_permissions(bpy.types.Panel):
+    bl_label = "权限与执行"
+    bl_idname = "VIEW3D_PT_partme_blender_permissions"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "PartMe MCP"
+    bl_parent_id = "VIEW3D_PT_partme_blender_mcp"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(context.scene, "partme_blender_output_root", text="输出目录")
+        layout.prop(context.scene, "partme_blender_asset_root", text="素材目录")
+        layout.prop(context.scene, "partme_blender_execution_mode", text="执行模式")
+        layout.prop(context.scene, "partme_blender_allow_proxies", text="允许设计缺失素材的替身")
+
+
+_PROVIDER_ICONS = {
+    "local_library": "ASSET_MANAGER",
+    "polypizza": "MESH_ICOSPHERE",
+    "polyhaven": "WORLD",
+    "sketchfab": "MESH_MONKEY",
+    "hyper3d": "MESH_UVSPHERE",
+    "hunyuan3d": "MESH_CUBE",
+}
+
+
+def _draw_provider_rows(layout, context, category):
+    from .harness.provider_registry import get_provider_registry
+    providers = [row for row in get_provider_registry().snapshot(context)["providers"]
+                 if row["category"] == category]
+    if not providers:
+        layout.label(text="没有已注册的供应商", icon="INFO")
+        return
+    for provider in providers:
         box = layout.box()
-        box.label(text="授权目录", icon="FILE_FOLDER")
-        box.prop(bpy.context.scene, "partme_blender_output_root", text="输出目录（AI 导出仅限此处）")
-        box.prop(bpy.context.scene, "partme_blender_asset_root", text="素材目录（AI 导入仅限此处）")
-
-        # ── 功能区 4：执行模式 ─────────────────────────────
-        box = layout.box()
-        box.label(text="执行模式", icon="SETTINGS")
-        box.prop(bpy.context.scene, "partme_blender_execution_mode", text="模式")
-        box.prop(bpy.context.scene, "partme_blender_allow_proxies", text="允许设计缺失素材的替身")
+        row = box.row(align=True)
+        row.label(text=provider["label"], icon=_PROVIDER_ICONS.get(provider["providerId"], "PLUGIN"))
+        state_icon = "CHECKMARK" if provider["state"] == "ready" else "ERROR" if provider["state"] == "error" else "INFO"
+        row.label(text=provider["statusText"], icon=state_icon)
+        if "configure" in provider["actions"] or provider["state"] == "configuration_required":
+            action = row.operator(PARTMEBLENDER_OT_provider_settings.bl_idname, text="配置")
+            action.provider_id = provider["providerId"]
 
 
-CLASSES = (PARTMEBLENDER_OT_start, PARTMEBLENDER_OT_revoke, PARTMEBLENDER_OT_approve_request,
-           PARTMEBLENDER_OT_deny_request, VIEW3D_PT_partme_blender_mcp)
+class VIEW3D_PT_partme_blender_assets(bpy.types.Panel):
+    bl_label = "资产与素材库"
+    bl_idname = "VIEW3D_PT_partme_blender_assets"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "PartMe MCP"
+    bl_parent_id = "VIEW3D_PT_partme_blender_mcp"
+
+    def draw(self, context):
+        row = self.layout.row(align=True)
+        row.label(text="下载仅写入已授权素材目录", icon="LOCKED")
+        row.operator(PARTMEBLENDER_OT_refresh_providers.bl_idname, text="", icon="FILE_REFRESH")
+        _draw_provider_rows(self.layout, context, "asset_library")
+
+
+class VIEW3D_PT_partme_blender_ai_models(bpy.types.Panel):
+    bl_label = "AI 生成模型"
+    bl_idname = "VIEW3D_PT_partme_blender_ai_models"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "PartMe MCP"
+    bl_parent_id = "VIEW3D_PT_partme_blender_mcp"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        self.layout.label(text="生成前确认外部服务、费用与保存目录", icon="INFO")
+        _draw_provider_rows(self.layout, context, "ai_model")
+
+
+CLASSES = (
+    PARTMEBLENDER_OT_start,
+    PARTMEBLENDER_OT_revoke,
+    PARTMEBLENDER_OT_approve_request,
+    PARTMEBLENDER_OT_deny_request,
+    PARTMEBLENDER_OT_refresh_providers,
+    PARTMEBLENDER_OT_provider_settings,
+    VIEW3D_PT_partme_blender_mcp,
+    VIEW3D_PT_partme_blender_permissions,
+    VIEW3D_PT_partme_blender_assets,
+    VIEW3D_PT_partme_blender_ai_models,
+)
 
 
 def register():

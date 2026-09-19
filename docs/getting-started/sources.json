@@ -1,6 +1,6 @@
 {
   "product": "PartMe Blender MCP",
-  "releaseUrl": "https://github.com/partme-ai/blender-mcp/releases/latest",
+  "releaseUrl": "https://github.com/full-aigc-plugins/blender-mcp/releases/latest",
   "blenderDownloadUrl": "https://www.blender.org/download/",
   "blenderManualUrl": "https://docs.blender.org/manual/en/latest/advanced/blender_directory_layout.html",
   "mcpProtocolUrl": "https://modelcontextprotocol.io/specification/2025-06-18",

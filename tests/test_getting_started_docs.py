@@ -28,7 +28,7 @@ class SourceRegistryTests(unittest.TestCase):
     def test_sources_are_explicit_and_evidence_scoped(self):
         data = json.loads((GUIDE_DIR / "sources.json").read_text(encoding="utf-8"))
         self.assertEqual(data["product"], "PartMe Blender MCP")
-        self.assertEqual(data["releaseUrl"], "https://github.com/partme-ai/blender-mcp/releases/latest")
+        self.assertEqual(data["releaseUrl"], "https://github.com/full-aigc-plugins/blender-mcp/releases/latest")
         self.assertEqual(data["blenderDownloadUrl"], "https://www.blender.org/download/")
         self.assertIn("2025-06-18", data["mcpProtocolUrl"])
         self.assertEqual(

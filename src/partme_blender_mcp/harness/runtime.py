@@ -219,6 +219,19 @@ def build_registry(bpy_module, *, runtime_mode: str = "managed", approved_output
                       validate=closed_arguments(required=('path','dataType','names'), optional=('link',)))
     registry.register('asset.pack_resources',assets.pack_resources,validate=closed_arguments())
     registry.register('asset.make_paths_relative',assets.make_paths_relative,validate=closed_arguments())
+    registry.register('asset.fetch_url',assets.fetch_url,
+                      validate=closed_arguments(required=('url',),optional=('filename',)))
+    registry.register('asset.fetch_generated',assets.fetch_generated,
+                      validate=closed_arguments(required=('url','providerId'),optional=('filename',)), risk='gated')
+    registry.register('asset.polypizza_search',assets.polypizza_search,
+                      validate=closed_arguments(required=(),optional=('query','licence','limit')), risk='read')
+    registry.register('asset.polypizza_download',assets.polypizza_download,
+                      validate=closed_arguments(required=('modelId',)), risk='gated')
+    registry.register('provider.external_action',
+                      lambda arguments: {'changedObjects': [], 'result': {
+                          'providerId': arguments['providerId'], 'action': arguments['action'],
+                          'risk': arguments['risk'], 'approved': True}},
+                      validate=closed_arguments(required=('providerId','action','risk')), risk='gated')
     registry.register('uv.mark_seams',uvs.mark_seams,
                       validate=closed_arguments(required=('selection',),optional=('seam',)))
     registry.register('uv.unwrap',uvs.unwrap,
