@@ -12,6 +12,6 @@
 - [x] 修复 `PluginMcpAdapter` 跨页唯一性并增加真实适配器测试。
 - [x] 为 `scripts/harness/` 建立声明式差分门禁。
 - [x] 更新活动 README、仓库 URL 和验证状态。
-- [ ] 构建 `blender-mcp 0.4.0` 资产，更新插件 runtime lock。
+- [x] 构建 `blender-mcp 0.4.0` 资产，更新插件 runtime lock。
 - [ ] 运行单元、分发、真实 Blender 与客户端矩阵验收。
-- [ ] 发布 runtime、插件和市场清单；分别记录远端与安装证据。
+- [x] 发布 runtime、插件和市场清单；分别记录远端与安装证据。

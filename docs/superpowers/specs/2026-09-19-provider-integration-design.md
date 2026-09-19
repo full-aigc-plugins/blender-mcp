@@ -1,7 +1,7 @@
 # PartMe Blender MCP 供应商整合设计
 
 > 状态：已确认实施  
-> 目标版本：`blender-mcp 0.4.0` / `blender-design 0.9.0`
+> 目标版本：`blender-mcp 0.4.0` / `blender-design 0.10.0`
 > 前置基线：已发布的 `blender-mcp 0.2.1` 不覆盖、不重传同名资产
 
 ## 1. 目标
@@ -132,7 +132,7 @@ flowchart TB
 
 - `v0.2.1` 已发布，先记录其版本漂移基线，不修改远端资产；
 - 本增量使用 `blender-mcp 0.4.0`；
-- 插件使用 `blender-design 0.9.0`，锁定新的 runtime/add-on/community SHA；
+- 插件使用 `blender-design 0.10.0`，锁定新的 runtime/add-on/community SHA；
 - 旧 `blender_community_call` 保留一个版本，但对已移除的 Poly Pizza 和直接导入命令返回结构化迁移错误；
 - `scripts/harness/` 暂不删除，建立带 SHA 的差分门禁并声明只读兼容边界。
 
