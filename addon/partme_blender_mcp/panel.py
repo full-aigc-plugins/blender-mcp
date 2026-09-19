@@ -29,7 +29,48 @@ _TABS = [
     ("ACCESS", "接入", "本地与远程 MCP 接入"),
 ]
 _PROVIDER_SYNC_MAX_ATTEMPTS = 3
+# Blender reports region width in framebuffer pixels on Retina displays and in
+# logical pixels on standard-DPI displays. 820 keeps the compact composition
+# active through the documented 240 px sidebar target on both classes while a
+# normally widened 320 px panel retains the one-line V4 composition.
+_COMPACT_REGION_WIDTH = 820
 _provider_sync_attempts = 0
+_status_previews = None
+
+
+def _register_status_icons():
+    """Load the V4 status palette without creating saveable Blender datablocks."""
+    global _status_previews
+    if _status_previews is not None:
+        return
+    import bpy.utils.previews
+
+    previews = bpy.utils.previews.new()
+    icon_root = Path(__file__).with_name("icons")
+    for state in ("ready", "ready_check", "busy", "configuration_required", "disabled", "error"):
+        previews.load(state, str(icon_root / f"status_{state}.png"), "IMAGE")
+    _status_previews = previews
+
+
+def _unregister_status_icons():
+    global _status_previews
+    if _status_previews is None:
+        return
+    import bpy.utils.previews
+
+    bpy.utils.previews.remove(_status_previews)
+    _status_previews = None
+
+
+def _status_icon_value(state: str) -> int:
+    palette_state = {
+        "running": "ready", "completed": "ready",
+        "starting": "busy", "stopping": "busy",
+        "stopped": "disabled", "unavailable": "disabled", "cancelled": "disabled",
+    }.get(state, state)
+    if _status_previews is None or palette_state not in _status_previews:
+        return 0
+    return _status_previews[palette_state].icon_id
 
 
 def _default_mcp_python():
@@ -315,6 +356,11 @@ class PARTMEBLENDER_OT_refresh_providers(bpy.types.Operator):
         try:
             reload_provider_registry(Path(__file__).with_name("providers.json"))
             snapshot = _apply_provider_preferences(context)
+            preferences = _addon_preferences(context)
+            if preferences is not None:
+                from .remote import manager
+                manager().probe_stdio(preferences)
+                manager().poll(preferences)
         except Exception as exc:
             self.report({"WARNING"}, f"供应商目录无效：{exc}")
             return {"CANCELLED"}
@@ -357,23 +403,95 @@ class PARTMEBLENDER_OT_provider_settings(bpy.types.Operator):
     bl_idname = "partme_blender.provider_settings"
     bl_label = "配置供应商"
     provider_id: bpy.props.StringProperty()
+    api_key: bpy.props.StringProperty(name="API Key", subtype="PASSWORD")
+    hyper3d_mode: bpy.props.EnumProperty(
+        name="平台", items=(("MAIN_SITE", "hyper3d.ai", "hyper3d.ai"), ("FAL_AI", "fal.ai", "fal.ai")),
+    )
+    hunyuan3d_mode: bpy.props.EnumProperty(
+        name="接入模式", items=(("LOCAL_API", "本地 API", "本地 Hunyuan3D API"),
+                            ("OFFICIAL_API", "腾讯云官方 API", "腾讯云 Hunyuan3D API")),
+    )
+    secret_id: bpy.props.StringProperty(name="SecretId", subtype="PASSWORD")
+    secret_key: bpy.props.StringProperty(name="SecretKey", subtype="PASSWORD")
+    api_url: bpy.props.StringProperty(name="API URL")
+    international_pro: bpy.props.BoolProperty(name="国际站 Pro 账户")
+
+    @staticmethod
+    def _community_preferences(context):
+        addon = getattr(getattr(context, "preferences", None), "addons", {}).get("blender_mcp_community")
+        return getattr(addon, "preferences", None)
+
+    def invoke(self, context, _event):
+        preferences = _addon_preferences(context)
+        community = self._community_preferences(context)
+        scene = context.scene
+        if self.provider_id == "polypizza" and preferences is not None:
+            self.api_key = preferences.polypizza_api_key
+        elif self.provider_id == "sketchfab" and community is not None:
+            self.api_key = community.sketchfab_api_key
+        elif self.provider_id == "hyper3d" and community is not None:
+            self.api_key = community.hyper3d_api_key
+            self.hyper3d_mode = scene.blendermcp_hyper3d_mode
+        elif self.provider_id == "hunyuan3d" and community is not None:
+            self.hunyuan3d_mode = scene.blendermcp_hunyuan3d_mode
+            self.secret_id = community.hunyuan3d_secret_id
+            self.secret_key = community.hunyuan3d_secret_key
+            self.api_url = community.hunyuan3d_api_url
+            self.international_pro = scene.blendermcp_hunyuan3d_intl_pro
+        else:
+            self.report({"WARNING"}, "供应商配置不可用；请确认对应 Add-on 已启用")
+            return {"CANCELLED"}
+        return context.window_manager.invoke_props_dialog(
+            self, width=420, title="供应商配置", confirm_text="保存",
+        )
+
+    def draw(self, _context):
+        layout = self.layout
+        layout.label(text={
+            "polypizza": "Poly Pizza（PartMe 原生）",
+            "sketchfab": "Sketchfab",
+            "hyper3d": "Hyper3D Rodin",
+            "hunyuan3d": "腾讯混元 3D",
+        }.get(self.provider_id, "供应商"), icon="LOCKED")
+        if self.provider_id in {"polypizza", "sketchfab"}:
+            layout.prop(self, "api_key")
+        elif self.provider_id == "hyper3d":
+            layout.prop(self, "hyper3d_mode")
+            layout.prop(self, "api_key")
+        elif self.provider_id == "hunyuan3d":
+            layout.prop(self, "hunyuan3d_mode")
+            if self.hunyuan3d_mode == "OFFICIAL_API":
+                layout.prop(self, "secret_id")
+                layout.prop(self, "secret_key")
+                layout.prop(self, "international_pro")
+            else:
+                layout.prop(self, "api_url")
+        layout.label(text="凭证仅保存在本机 Blender 用户配置中", icon="INFO")
 
     def execute(self, context):
+        preferences = _addon_preferences(context)
+        community = self._community_preferences(context)
+        scene = context.scene
+        if self.provider_id == "polypizza" and preferences is not None:
+            preferences.polypizza_api_key = self.api_key.strip()
+        elif self.provider_id == "sketchfab" and community is not None:
+            community.sketchfab_api_key = self.api_key.strip()
+        elif self.provider_id == "hyper3d" and community is not None:
+            scene.blendermcp_hyper3d_mode = self.hyper3d_mode
+            community.hyper3d_api_key = self.api_key.strip()
+        elif self.provider_id == "hunyuan3d" and community is not None:
+            scene.blendermcp_hunyuan3d_mode = self.hunyuan3d_mode
+            community.hunyuan3d_secret_id = self.secret_id.strip()
+            community.hunyuan3d_secret_key = self.secret_key.strip()
+            community.hunyuan3d_api_url = self.api_url.strip()
+            scene.blendermcp_hunyuan3d_intl_pro = self.international_pro
+        else:
+            self.report({"WARNING"}, "供应商配置不可用")
+            return {"CANCELLED"}
         from .harness.provider_registry import get_provider_registry
-        provider = next((row for row in get_provider_registry().snapshot(context)["providers"]
-                         if row["providerId"] == self.provider_id), None)
-        if provider is None:
-            self.report({"WARNING"}, f"未知供应商：{self.provider_id}")
-            return {"CANCELLED"}
-        module = __package__ if self.provider_id == "polypizza" else provider["metadata"].get("preferencesModule")
-        if not module:
-            self.report({"WARNING"}, f"{provider['label']} 没有可用的配置入口")
-            return {"CANCELLED"}
-        try:
-            _open_addon_preferences(module)
-        except Exception as exc:
-            self.report({"WARNING"}, f"无法打开 {provider['label']} 配置：{exc}")
-            return {"CANCELLED"}
+        snapshot = get_provider_registry().refresh(context)
+        provider = next(row for row in snapshot["providers"] if row["providerId"] == self.provider_id)
+        self.report({"INFO"}, f"{provider['label']}：{provider['statusText']}")
         return {"FINISHED"}
 
 
@@ -409,25 +527,55 @@ class PARTMEBLENDER_OT_execution_settings(bpy.types.Operator):
         self.asset_root = scene.partme_blender_asset_root
         self.execution_mode = scene.partme_blender_execution_mode
         self.asset_strategy = scene.partme_blender_asset_strategy
-        return context.window_manager.invoke_props_dialog(self, width=420)
+        return context.window_manager.invoke_props_dialog(
+            self, width=420, title="权限与执行", confirm_text="保存并应用",
+        )
 
     def draw(self, _context):
         layout = self.layout
-        for name in ("output_root", "asset_root", "execution_mode", "asset_strategy"):
-            layout.label(text=self.bl_rna.properties[name].name)
+        for name, label in (
+            ("output_root", "输出目录"),
+            ("asset_root", "素材目录"),
+            ("execution_mode", "执行模式"),
+            ("asset_strategy", "素材策略"),
+        ):
+            layout.label(text=label)
             layout.prop(self, name, text="")
 
     def execute(self, context):
-        if not bpy.path.abspath(self.output_root or ""):
+        output_root = bpy.path.abspath(self.output_root or "")
+        if not output_root:
             self.report({"ERROR"}, "输出目录不能为空")
+            return {"CANCELLED"}
+        root = Path(output_root).resolve()
+        asset_root = bpy.path.abspath(self.asset_root or "")
+        asset_roots = [Path(asset_root).resolve()] if asset_root else []
+        from .harness.execution_policy import ExecutionPolicy
+        try:
+            policy = ExecutionPolicy.from_dict({
+                "mode": self.execution_mode,
+                "approvedOutputRoot": str(root),
+                "allowDesignedProxies": context.scene.partme_blender_allow_proxies,
+                "assetStrategy": self.asset_strategy,
+            })
+            root.mkdir(parents=True, exist_ok=True)
+            handle = runtime.current()
+            if handle is not None:
+                handle.reconfigure(
+                    approved_output_root=root,
+                    approved_asset_roots=asset_roots,
+                    execution_policy=policy,
+                    runtime_mode="connector",
+                )
+        except Exception as exc:
+            self.report({"ERROR"}, f"执行设置未应用：{exc}")
             return {"CANCELLED"}
         scene = context.scene
         scene.partme_blender_output_root = self.output_root
         scene.partme_blender_asset_root = self.asset_root
         scene.partme_blender_execution_mode = self.execution_mode
         scene.partme_blender_asset_strategy = self.asset_strategy
-        if runtime.is_running():
-            self.report({"INFO"}, "设置已保存；授权目录变更将在下次启动 MCP 服务时生效")
+        self.report({"INFO"}, "执行设置已保存并应用" if handle is not None else "执行设置已保存")
         return {"FINISHED"}
 
 
@@ -584,16 +732,24 @@ class PARTMEBLENDER_OT_copy_remote_address(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class PARTMEBLENDER_OT_copy_session_id(bpy.types.Operator):
+    bl_idname = "partme_blender.copy_session_id"
+    bl_label = "复制会话 ID"
+
+    def execute(self, context):
+        handle = runtime.current()
+        if handle is None:
+            self.report({"ERROR"}, "当前没有活动制作会话")
+            return {"CANCELLED"}
+        context.window_manager.clipboard = handle.session.session_id
+        self.report({"INFO"}, "会话 ID 已复制")
+        return {"FINISHED"}
+
+
 _PROVIDER_ICONS = {
-    "local_library": "ASSET_MANAGER", "polypizza": "MESH_ICOSPHERE", "polyhaven": "WORLD",
-    "sketchfab": "MESH_MONKEY", "hyper3d": "MESH_UVSPHERE", "hunyuan3d": "MESH_CUBE",
+    "local_library": "FILE_FOLDER", "polypizza": "MESH_CUBE", "polyhaven": "WORLD",
+    "sketchfab": "INTERNET", "hyper3d": "MESH_CUBE", "hunyuan3d": "MESH_ICOSPHERE",
 }
-_STATE_ICONS = {
-    "ready": "CHECKMARK", "busy": "TIME", "configuration_required": "ERROR",
-    "disabled": "PAUSE", "unavailable": "UNLINKED", "error": "CANCEL",
-}
-
-
 def _draw_progress(layout, progress, text):
     if progress is None:
         layout.label(text=text, icon="TIME")
@@ -621,28 +777,60 @@ def _draw_approvals(layout, handle):
 def _draw_provider_rows(layout, context, category):
     from .harness.provider_registry import get_provider_registry
     providers = [row for row in get_provider_registry().snapshot(context)["providers"] if row["category"] == category]
+    providers.sort(key=lambda provider: (
+        int(provider.get("metadata", {}).get("uiOrder", 1000)), provider["label"].casefold(),
+    ))
     if not providers:
         layout.label(text="没有已注册的供应商", icon="INFO")
         return
+    compact = getattr(context.region, "width", _COMPACT_REGION_WIDTH) < _COMPACT_REGION_WIDTH
     for provider in providers:
         box = layout.box()
         task = provider.get("task")
+        active = task is not None and task["active"]
         row = box.row(align=True)
-        row.label(text=provider["label"], icon=_PROVIDER_ICONS.get(provider["providerId"], "PLUGIN"))
-        if category == "asset_library":
-            status = row.row(align=True)
+        row.scale_y = 1.35
+        if category == "ai_model" and compact:
+            identity = box.column(align=True)
+            identity.label(
+                text=provider["label"], icon=_PROVIDER_ICONS.get(provider["providerId"], "PLUGIN"),
+            )
+            status = identity.row(align=True)
+            actions = box.row(align=True)
+        elif category == "ai_model":
+            identity = row.column(align=True)
+            identity.label(
+                text=provider["label"], icon=_PROVIDER_ICONS.get(provider["providerId"], "PLUGIN"),
+            )
+            status = identity.row(align=True)
+            actions = row.row(align=True)
+        elif compact and provider["configurable"]:
+            identity = row.row(align=True)
+            identity.label(text=provider["label"], icon=_PROVIDER_ICONS.get(provider["providerId"], "PLUGIN"))
+            status = identity.row(align=True)
+            actions = box.row(align=True)
         else:
-            status = box.row(align=True)
+            row.label(text=provider["label"], icon=_PROVIDER_ICONS.get(provider["providerId"], "PLUGIN"))
+            status = row.row(align=True)
+            actions = row.row(align=True)
         status.alert = provider["state"] == "error"
-        status.label(text=provider["statusText"], icon=_STATE_ICONS.get(provider["state"], "INFO"))
-        action_row = row if category == "asset_library" else status
-        if provider["configurable"]:
-            settings = action_row.row(align=True)
-            settings.enabled = task is None or not task["active"]
-            action = settings.operator(PARTMEBLENDER_OT_provider_settings.bl_idname, text="配置")
+        status_text = provider["statusText"]
+        if active and task.get("progress") is not None:
+            status_text += f"  {task['progress']:.0%}"
+        status.label(text=status_text, icon_value=_status_icon_value(provider["state"]))
+        if provider["configurable"] and not active:
+            settings = actions.row(align=True)
+            compact_settings = category == "asset_library" and provider["providerId"] == "polypizza"
+            action = settings.operator(
+                PARTMEBLENDER_OT_provider_settings.bl_idname,
+                text="" if compact_settings else "配置",
+                icon="PREFERENCES" if compact_settings else "NONE",
+            )
             action.provider_id = provider["providerId"]
         if provider["mutable"]:
-            toggle = row.row(align=True)
+            if active:
+                actions.label(text="", icon="LOCKED")
+            toggle = actions.row(align=True)
             toggle.enabled = not provider["toggleLocked"]
             action = toggle.operator(
                 PARTMEBLENDER_OT_set_provider_enabled.bl_idname,
@@ -653,13 +841,18 @@ def _draw_provider_rows(layout, context, category):
             action.provider_id = provider["providerId"]
             action.enabled = not provider["enabled"]
         else:
-            row.label(text="始终启用", icon="LOCKED")
-        if task is not None and task["active"]:
+            actions.label(text="始终启用", icon="LOCKED")
+        if active:
             _draw_progress(box, task.get("progress"), task.get("stage") or "处理中")
-            box.label(text=task.get("stage") or "自动生成 · 正在处理", icon="INFO")
+            task_row = box.row(align=True)
+            task_row.label(text=task.get("stage") or "自动生成 · 正在处理")
             if "cancel" in provider["actions"]:
-                action = box.operator(
-                    PARTMEBLENDER_OT_cancel_provider_task.bl_idname, text="终止生成", icon="CANCEL",
+                cancel = box.row(align=True) if compact else task_row.row(align=True)
+                cancel.alert = True
+                action = cancel.operator(
+                    PARTMEBLENDER_OT_cancel_provider_task.bl_idname,
+                    text="终止生成" if task.get("cancelSupported") else "停止等待",
+                    icon="CANCEL",
                 )
                 action.provider_id = provider["providerId"]
                 action.task_id = task["taskId"]
@@ -675,28 +868,60 @@ def _draw_work_tab(layout, context, handle):
         layout.label(text="启动本地服务后显示制作会话", icon="INFO")
         layout.operator(PARTMEBLENDER_OT_start.bl_idname, text="启动 MCP 服务", icon="PLAY")
         return
+    from .harness.provider_registry import get_provider_registry
+
     status = handle.session.status()
+    active_task = next((
+        row.get("task") for row in get_provider_registry().snapshot(context)["providers"]
+        if row.get("task", {}).get("active")
+    ), None)
+    phase = "生成素材" if active_task is not None else (
+        "就绪" if status["stage"] == "Ready" else status["stage"]
+    )
+    progress = active_task.get("progress") if active_task is not None else status.get("progress")
     box = layout.box()
+    compact = getattr(context.region, "width", _COMPACT_REGION_WIDTH) < _COMPACT_REGION_WIDTH
+    if compact:
+        box.label(text="会话 ID")
+        row = box.row(align=True)
+    else:
+        row = box.row(align=True)
+        row.label(text="会话 ID")
+    value = row.box().row(align=True)
+    value.label(text=status["sessionId"][:20] + ("…" if len(status["sessionId"]) > 20 else ""))
+    value.operator(PARTMEBLENDER_OT_copy_session_id.bl_idname, text="", icon="COPYDOWN")
     row = box.row(align=True)
-    row.label(text="会话 ID")
-    row.label(text=status["sessionId"][:20] + ("…" if len(status["sessionId"]) > 20 else ""))
-    box.label(text="阶段  " + ("就绪" if status["stage"] == "Ready" else status["stage"]))
-    box.label(text=f"等待操作  {getattr(handle.executor, 'pending_count', 0)}")
-    _draw_progress(box, status.get("progress"), status.get("stage") or "制作中")
+    row.label(text="阶段")
+    row.box().label(text=phase)
+    row = box.row(align=True)
+    row.label(text="等待操作")
+    row.label(text=str(getattr(handle.executor, "pending_count", 0)))
+    _draw_progress(box, progress, active_task.get("stage") if active_task is not None else status.get("stage") or "制作中")
     _draw_approvals(layout, handle)
     row = layout.row(align=True)
+    row.scale_y = 1.35
     if status["paused"]:
         row.operator("partme_blender.resume_work", text="恢复制作", icon="PLAY")
     else:
         row.operator("partme_blender.pause_work", text="暂停 / 接管", icon="PAUSE")
     row.operator(PARTMEBLENDER_OT_revoke.bl_idname, text="撤销会话", icon="CANCEL")
-    layout.label(text="快捷操作", icon="TOOL_SETTINGS")
+    layout.separator()
+    layout.label(text="⚡  快捷操作")
     row = layout.row(align=True)
-    for name, label in (("CAMERA", "相机"), ("FRONT", "正面"), ("SIDE", "侧面"), ("TOP", "顶面")):
-        row.operator("partme_blender.change_view", text=label).view = name
+    row.scale_y = 1.5
+    for name, label, icon in (
+        ("CAMERA", "相机", "CAMERA_DATA"), ("FRONT", "正面", "AXIS_FRONT"),
+        ("SIDE", "侧面", "AXIS_SIDE"), ("TOP", "顶面", "AXIS_TOP"),
+    ):
+        row.operator("partme_blender.change_view", text=label, icon=icon).view = name
     row = layout.row(align=True)
+    row.scale_y = 1.25
     row.operator("partme_blender.play_work", text="播放 / 暂停动画", icon="PLAY")
-    row.prop(context.scene, "frame_current", text="帧")
+    if compact:
+        frame = layout.row(align=True)
+        frame.prop(context.scene, "frame_current", text="当前帧")
+    else:
+        row.prop(context.scene, "frame_current", text="当前帧")
 
 
 def _draw_remote_transport(layout, preferences, transport, label, *, service_running):
@@ -718,12 +943,12 @@ def _draw_remote_transport(layout, preferences, transport, label, *, service_run
     toggle.enabled = not snapshot["running"]
     state = box.row()
     state.alert = snapshot["state"] == "error"
-    state.label(text=snapshot["statusText"], icon={
-        "starting": "TIME", "running": "CHECKMARK", "stopping": "TIME",
-        "stopped": "PAUSE", "error": "ERROR", "configuration_required": "ERROR",
-    }[snapshot["state"]])
+    status_text = snapshot["statusText"]
     if snapshot["state"] == "running":
-        box.label(text=f"客户端 {snapshot['clients']}  ·  {snapshot['address']}")
+        status_text += f" · 客户端 {snapshot['clients']}"
+    state.label(text=status_text, icon_value=_status_icon_value(snapshot["state"]))
+    if snapshot["state"] == "running":
+        box.label(text=snapshot["address"])
         action = box.operator(PARTMEBLENDER_OT_copy_remote_address.bl_idname, text="复制地址", icon="COPYDOWN")
         action.transport = transport
     elif snapshot["message"]:
@@ -740,10 +965,18 @@ def _draw_access_tab(layout, context, running):
     box = layout.box()
     stdio = manager().stdio_snapshot()
     ready = running and stdio["state"] == "ready"
-    box.label(text="stdio  " + ("已就绪" if ready else "不可用"), icon="CHECKMARK" if ready else "UNLINKED")
+    row = box.row(align=True)
+    row.scale_y = 1.3
+    row.label(text="stdio", icon="CONSOLE")
+    row.label(text="已就绪" if ready else "不可用",
+              icon_value=_status_icon_value("ready" if ready else "disabled"))
     if not ready:
-        box.label(text=stdio["message"] or ("请先启动 Blender 服务" if not running else "点击刷新探测 SDK"), icon="INFO")
-    box.operator(PARTMEBLENDER_OT_refresh_access.bl_idname, text="刷新接入状态", icon="FILE_REFRESH")
+        message = stdio["message"] or ("请先启动 Blender 服务" if not running else "点击顶部刷新状态探测 SDK")
+        if "官方 MCP SDK" in message:
+            box.label(text="未安装官方 MCP SDK", icon="ERROR")
+            box.operator(PARTMEBLENDER_OT_remote_settings.bl_idname, text="配置 MCP Python", icon="PREFERENCES")
+        else:
+            box.label(text=message[:80], icon="INFO")
     layout.separator()
     layout.label(text="远程 MCP", icon="NETWORK_DRIVE")
     if preferences is None:
@@ -757,7 +990,8 @@ def _draw_access_tab(layout, context, running):
     row = auth.row(align=True)
     row.label(text="Bearer Token", icon="LOCKED")
     configured = bool(preferences.remote_token)
-    row.label(text="已配置" if configured else "未配置", icon="CHECKMARK" if configured else "ERROR")
+    row.label(text="已配置" if configured else "未配置",
+              icon_value=_status_icon_value("ready" if configured else "configuration_required"))
     row = auth.row(align=True)
     row.operator(PARTMEBLENDER_OT_configure_remote_token.bl_idname, text="配置 Token", icon="PREFERENCES")
     row.operator(
@@ -808,12 +1042,19 @@ class VIEW3D_PT_partme_blender_mcp(bpy.types.Panel):
         summary = provider_snapshot["summary"]
 
         box = layout.box()
-        box.label(text="Blender 服务已就绪" if running else "Blender 服务未就绪",
-                  icon="CHECKMARK" if running else "UNLINKED")
+        status_row = box.row()
+        status_row.scale_y = 1.35
+        status_row.label(text="Blender 服务已就绪" if running else "Blender 服务未就绪",
+                         icon_value=_status_icon_value("ready_check" if running else "disabled"))
+        box.separator(factor=0.25)
         row = box.row(align=True)
+        row.scale_y = 1.15
         row.label(text=f"场景版本 {handle.session.scene_revision if running else 0}", icon="FILE")
+        row.separator(factor=0.5)
         row.label(text=f"供应商可用 {summary['available']} / {summary['total']}", icon="ASSET_MANAGER")
+        box.separator(factor=0.25)
         row = box.row(align=True)
+        row.scale_y = 1.35
         row.operator(PARTMEBLENDER_OT_refresh_providers.bl_idname, text="刷新状态", icon="FILE_REFRESH")
         row.operator(PARTMEBLENDER_OT_execution_settings.bl_idname, text="执行设置", icon="PREFERENCES")
 
@@ -827,14 +1068,17 @@ class VIEW3D_PT_partme_blender_mcp(bpy.types.Panel):
             action = row.operator(PARTMEBLENDER_OT_switch_tab.bl_idname, text="查看")
             action.tab = target
 
-        if hasattr(layout, "prop_tabs_enum"):
-            layout.prop_tabs_enum(context.window_manager, "partme_blender_ui_tab")
-        else:
-            layout.prop(context.window_manager, "partme_blender_ui_tab", expand=True)
+        # ``prop_tabs_enum`` collapses to only the active item in a narrow N-panel
+        # on Blender 5.x. Four explicit expanded enum buttons remain reachable at
+        # the 240 px acceptance width while preserving native Blender styling.
+        tabs = layout.row(align=True)
+        tabs.scale_y = 1.25
+        tabs.prop(context.window_manager, "partme_blender_ui_tab", expand=True)
         tab = context.window_manager.partme_blender_ui_tab
         if tab == "WORK":
             _draw_work_tab(layout, context, handle if running else None)
         elif tab == "ASSETS":
+            layout.label(text="素材库", icon="ASSET_MANAGER")
             layout.label(text="已启用供应商参与自动搜索，下载写入授权目录", icon="INFO")
             _draw_provider_rows(layout, context, "asset_library")
         elif tab == "MODELS":
@@ -862,12 +1106,14 @@ CLASSES = (
     PARTMEBLENDER_OT_refresh_access,
     PARTMEBLENDER_OT_toggle_remote,
     PARTMEBLENDER_OT_copy_remote_address,
+    PARTMEBLENDER_OT_copy_session_id,
     VIEW3D_PT_partme_blender_mcp,
 )
 
 
 def register():
     global _provider_sync_attempts
+    _register_status_icons()
     bpy.types.Scene.partme_blender_execution_mode = bpy.props.EnumProperty(
         name="Execution Mode", default="auto_with_budget", items=_EXECUTION_MODES,
     )
@@ -905,6 +1151,7 @@ def unregister():
             bpy.utils.unregister_class(cls)
         except RuntimeError:
             pass
+    _unregister_status_icons()
     for owner, name in (
         (bpy.types.Scene, "partme_blender_output_root"),
         (bpy.types.Scene, "partme_blender_asset_root"),

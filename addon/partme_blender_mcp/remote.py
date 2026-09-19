@@ -236,10 +236,19 @@ class RemoteListenerManager:
             env["PYTHONPATH"] = os.pathsep.join(filter(None, [package_parent, env.get("PYTHONPATH")]))
             result = subprocess.run(
                 [str(python), "-c", "import mcp, partme_blender_mcp; print('ready')"],
-                env=env, capture_output=True, text=True, timeout=3, check=False,
+                # A newly installed venv may spend several seconds warming the
+                # official SDK's import caches.  Keep the probe bounded, but do
+                # not turn that one-time cold start into a false "unavailable".
+                env=env, capture_output=True, text=True, timeout=8, check=False,
             )
             if result.returncode:
-                raise ValueError((result.stderr or result.stdout or "官方 MCP SDK 不可用")[-300:].strip())
+                details = (result.stderr or result.stdout or "").strip()
+                if "No module named 'mcp'" in details or 'No module named "mcp"' in details:
+                    raise ValueError("官方 MCP SDK 未安装；请在远程设置中选择已安装 SDK 的 MCP Python")
+                if "No module named 'partme_blender_mcp'" in details or 'No module named "partme_blender_mcp"' in details:
+                    raise ValueError("PartMe MCP 运行时未安装；请安装发布包或重新选择 MCP Python")
+                last_line = next((line.strip() for line in reversed(details.splitlines()) if line.strip()), "")
+                raise ValueError("MCP Python 探测失败" + (f"：{last_line[:160]}" if last_line else ""))
             self._stdio = {"state": "ready", "statusText": "已就绪", "message": ""}
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
             self._stdio = {"state": "unavailable", "statusText": "不可用", "message": str(exc)}

@@ -40,6 +40,13 @@ report["legacyProviderPanelsAbsent"] = not any(hasattr(bpy.types, name) for name
 ))
 report["defaultWorkbenchTab"] = bpy.context.window_manager.partme_blender_ui_tab
 report["assetStrategyDefault"] = bpy.context.scene.partme_blender_asset_strategy
+report["polypizzaConfigureResult"] = list(bpy.ops.partme_blender.provider_settings(
+    "EXEC_DEFAULT", provider_id="polypizza", api_key="smoke-polypizza-key",
+))
+report["polypizzaCredentialStored"] = (
+    bpy.context.preferences.addons["partme_blender_mcp"].preferences.polypizza_api_key
+    == "smoke-polypizza-key"
+)
 
 from partme_blender_mcp import runtime as addon_runtime  # noqa: E402
 
@@ -144,7 +151,68 @@ report["commitFinal"] = commit("tx-final")
 report["allowedProbeExists"] = "Allowed" in bpy.data.objects
 report["blockedProbeAbsent"] = "Blocked" not in bpy.data.objects
 
-# 8. Provider-neutral task progress and trusted local cancellation.
+# 8. Apply new execution settings to the live session without reconnecting.
+reconfigured_output = Path(tempfile.mkdtemp(prefix="pbm-reconfigured-out-"))
+reconfigured_assets = Path(tempfile.mkdtemp(prefix="pbm-reconfigured-assets-"))
+settings_result = bpy.ops.partme_blender.execution_settings(
+    "EXEC_DEFAULT",
+    output_root=str(reconfigured_output),
+    asset_root=str(reconfigured_assets),
+    execution_mode="auto_with_budget",
+    asset_strategy="auto_search_generate",
+)
+descriptor_after_settings = json.loads(handle.descriptor_path.read_text())
+report["executionSettingsResult"] = list(settings_result)
+report["executionSettingsLive"] = (
+    handle.session is session
+    and session.execution_policy.mode.value == "auto_with_budget"
+    and session.execution_policy.asset_strategy == "auto_search_generate"
+)
+report["executionSettingsDescriptor"] = (
+    descriptor_after_settings["outputRoot"] == str(reconfigured_output.resolve())
+    and descriptor_after_settings["assetRoots"] == [str(reconfigured_assets.resolve())]
+    and descriptor_after_settings["executionPolicy"]["assetStrategy"] == "auto_search_generate"
+)
+
+report["automaticProviderGate"] = call(
+    "provider-auto", "provider.external_action",
+    {"providerId": "polypizza", "action": "download", "risk": "network_download"},
+    transaction="provider-auto", revision=session.scene_revision,
+)
+report["automaticProviderHasNoApproval"] = not session.pending_authorizations()
+
+# A configured cumulative budget remains automatic while the estimate fits, then
+# creates the same trusted local approval card as every other gated action.
+from partme_blender_mcp.harness.execution_policy import ExecutionPolicy  # noqa: E402
+
+budget_policy = ExecutionPolicy.from_dict({
+    "mode": "auto_with_budget",
+    "approvedOutputRoot": str(reconfigured_output.resolve()),
+    "assetStrategy": "auto_search_generate",
+    "downstreamBudgetLimit": "5.00",
+})
+handle.reconfigure(
+    approved_output_root=reconfigured_output,
+    approved_asset_roots=(reconfigured_assets,),
+    execution_policy=budget_policy,
+    runtime_mode="connector",
+)
+report["budgetFirst"] = call(
+    "provider-budget-1", "provider.external_action",
+    {"providerId": "polypizza", "action": "generate", "risk": "paid_generation",
+     "estimatedCost": "3.00"}, transaction="provider-budget-1", revision=session.scene_revision,
+)
+report["budgetExceeded"] = call(
+    "provider-budget-2", "provider.external_action",
+    {"providerId": "polypizza", "action": "generate", "risk": "paid_generation",
+     "estimatedCost": "3.00"}, transaction="provider-budget-2", revision=session.scene_revision,
+)
+report["budgetPendingApproval"] = [
+    entry["requestId"] for entry in session.pending_authorizations()
+] == ["provider-budget-2"]
+bpy.ops.partme_blender.deny_pending(request_id="provider-budget-2")
+
+# 9. Provider-neutral task progress and trusted local cancellation.
 from partme_blender_mcp.harness.provider_tasks import get_provider_task_registry  # noqa: E402
 
 provider_tasks = get_provider_task_registry()
@@ -161,7 +229,7 @@ report["providerCancelResult"] = list(cancel_result)
 report["providerCancelled"] = cancelled["state"] == "cancelled"
 report["providerRemoteMayContinue"] = cancelled["remoteMayContinue"]
 
-# 9. Orderly shutdown.
+# 10. Orderly shutdown.
 frontend.unregister()
 report["singleWorkbenchAfterFrontendStop"] = hasattr(bpy.types, "VIEW3D_PT_partme_blender_mcp")
 addon_runtime.stop()

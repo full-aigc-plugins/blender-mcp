@@ -256,7 +256,9 @@ def build_registry(bpy_module, *, runtime_mode: str = "managed", approved_output
                       risk='read')
     registry.register('provider.external_action',
                       provider_external_action,
-                      validate=closed_arguments(required=('providerId','action','risk')), risk='gated')
+                      validate=closed_arguments(
+                          required=('providerId','action','risk'), optional=('estimatedCost',),
+                      ), risk='gated')
     registry.register('uv.mark_seams',uvs.mark_seams,
                       validate=closed_arguments(required=('selection',),optional=('seam',)))
     registry.register('uv.unwrap',uvs.unwrap,
@@ -530,3 +532,41 @@ def create_session(bpy_module, session_id: str, *, runtime_mode: str = "managed"
     session = HarnessSession(session_id, dispatch=registry.dispatch, transactions=transactions, execution_policy=policy)
     holder["session"] = session
     return session
+
+
+def prepare_session_reconfiguration(
+    bpy_module,
+    session: HarnessSession,
+    *,
+    runtime_mode: str,
+    approved_output_root: Path,
+    approved_asset_roots=(),
+    execution_policy: ExecutionPolicy,
+):
+    """Validate and construct a replacement dispatch table without mutating the session."""
+    if session.revoked:
+        raise HarnessError("SESSION_REVOKED", "runtime has closed")
+    if session._active_transactions:
+        raise HarnessError(
+            "RECONFIGURATION_BUSY",
+            "finish or roll back the active transaction before applying execution settings",
+        )
+    if session.pending_authorizations():
+        raise HarnessError(
+            "RECONFIGURATION_BUSY",
+            "approve or reject the pending approval before applying execution settings",
+        )
+    output_root = Path(approved_output_root).resolve()
+    asset_roots = tuple(Path(value).resolve() for value in approved_asset_roots)
+    if execution_policy.mode is ExecutionMode.AUTO_WITH_BUDGET and (
+        Path(execution_policy.approved_output_root) != output_root
+    ):
+        raise ValueError("execution policy output root must match the runtime output root")
+    registry = build_registry(
+        bpy_module,
+        runtime_mode=runtime_mode,
+        approved_output_root=output_root,
+        approved_asset_roots=asset_roots,
+        revision_provider=lambda: session.scene_revision,
+    )
+    return registry.dispatch, output_root, asset_roots

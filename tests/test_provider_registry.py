@@ -4,6 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -30,6 +31,25 @@ class ProviderRegistryTests(unittest.TestCase):
         polypizza = snapshot["providers"][1]
         self.assertEqual(polypizza["source"], "native")
         self.assertIn("network_download", polypizza["risks"])
+        self.assertEqual(snapshot["providers"][0]["metadata"]["uiOrder"], 10)
+        self.assertEqual(polypizza["metadata"]["uiOrder"], 40)
+
+    def test_native_polypizza_defaults_on_only_after_configuration_is_available(self):
+        registry = ProviderRegistry()
+        register_native_providers(registry)
+
+        missing = registry.refresh()
+        polypizza = next(row for row in missing["providers"] if row["providerId"] == "polypizza")
+        self.assertFalse(polypizza["enabled"])
+        self.assertTrue(polypizza["toggleLocked"])
+        self.assertEqual(polypizza["state"], "configuration_required")
+
+        with patch.dict("os.environ", {"POLYPIZZA_API_KEY": "configured"}):
+            configured = registry.refresh()
+        polypizza = next(row for row in configured["providers"] if row["providerId"] == "polypizza")
+        self.assertTrue(polypizza["enabled"])
+        self.assertFalse(polypizza["toggleLocked"])
+        self.assertEqual(polypizza["state"], "ready")
 
     def test_contribution_file_registers_community_providers(self):
         registry = ProviderRegistry()
@@ -110,6 +130,110 @@ class ProviderRegistryTests(unittest.TestCase):
         registry.refresh()
         self.assertEqual(calls, ["probe"])
         self.assertEqual(registry.snapshot()["providers"][0]["statusText"], "可用")
+
+    def test_community_probe_uses_in_process_blender_server_without_loopback_socket(self):
+        registry = ProviderRegistry()
+        payload = {
+            "schemaVersion": "partme-provider-catalog/v1",
+            "providers": [{
+                "providerId": "polyhaven",
+                "label": "Poly Haven",
+                "category": "asset_library",
+                "source": "community",
+                "risks": ["read", "network_download"],
+                "metadata": {
+                    "statusCommand": "get_polyhaven_status",
+                    "enableProperty": "blendermcp_use_polyhaven",
+                    "preferencesModule": "blender_mcp_community",
+                },
+            }],
+        }
+        server = SimpleNamespace(get_polyhaven_status=lambda: {
+            "enabled": True,
+            "message": "PolyHaven integration is enabled and ready to use.",
+        })
+        fake_bpy = SimpleNamespace(types=SimpleNamespace(blendermcp_server=server))
+        context = SimpleNamespace(scene=SimpleNamespace(blendermcp_use_polyhaven=True))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "providers.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            registry.load(path)
+        with patch.dict(sys.modules, {"bpy": fake_bpy}), \
+             patch("partme_blender_mcp.harness.provider_registry.socket.create_connection",
+                   side_effect=AssertionError("loopback socket must not be used")) as connect:
+            refreshed = registry.refresh(context)
+
+        connect.assert_not_called()
+        self.assertEqual(refreshed["providers"][0]["state"], "ready")
+        self.assertEqual(refreshed["providers"][0]["statusText"], "可用")
+
+    def test_sketchfab_in_process_probe_does_not_make_provider_network_request(self):
+        registry = ProviderRegistry()
+        payload = {
+            "schemaVersion": "partme-provider-catalog/v1",
+            "providers": [{
+                "providerId": "sketchfab",
+                "label": "Sketchfab",
+                "category": "asset_library",
+                "source": "community",
+                "risks": ["read", "network_download"],
+                "metadata": {
+                    "statusCommand": "get_sketchfab_status",
+                    "enableProperty": "blendermcp_use_sketchfab",
+                    "preferencesModule": "blender_mcp_community",
+                },
+            }],
+        }
+        server = SimpleNamespace(_get_sketchfab_api_key=lambda: "configured-secret")
+        fake_bpy = SimpleNamespace(types=SimpleNamespace(blendermcp_server=server))
+        context = SimpleNamespace(scene=SimpleNamespace(blendermcp_use_sketchfab=True))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "providers.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            registry.load(path)
+        with patch.dict(sys.modules, {"bpy": fake_bpy}), \
+             patch("partme_blender_mcp.harness.provider_registry.socket.create_connection",
+                   side_effect=AssertionError("loopback socket must not be used")) as connect:
+            refreshed = registry.refresh(context)
+
+        connect.assert_not_called()
+        self.assertEqual(refreshed["providers"][0]["state"], "ready")
+        self.assertNotIn("configured-secret", json.dumps(refreshed))
+
+    def test_disabled_hyper3d_still_reports_missing_configuration_and_locks_toggle(self):
+        registry = ProviderRegistry()
+        payload = {
+            "schemaVersion": "partme-provider-catalog/v1",
+            "providers": [{
+                "providerId": "hyper3d",
+                "label": "Hyper3D Rodin",
+                "category": "ai_model",
+                "source": "community",
+                "risks": ["read", "paid_generation"],
+                "enabled": False,
+                "mutable": True,
+                "configurable": True,
+                "metadata": {
+                    "statusCommand": "get_hyper3d_status",
+                    "enableProperty": "blendermcp_use_hyper3d",
+                    "preferencesModule": "blender_mcp_community",
+                },
+            }],
+        }
+        server = SimpleNamespace(_get_hyper3d_api_key=lambda: "")
+        fake_bpy = SimpleNamespace(types=SimpleNamespace(blendermcp_server=server))
+        context = SimpleNamespace(scene=SimpleNamespace(blendermcp_use_hyper3d=False))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "providers.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            registry.load(path)
+        with patch.dict(sys.modules, {"bpy": fake_bpy}):
+            refreshed = registry.refresh(context)
+
+        row = refreshed["providers"][0]
+        self.assertEqual(row["state"], "configuration_required")
+        self.assertFalse(row["enabled"])
+        self.assertTrue(row["toggleLocked"])
 
     def test_enabled_preference_is_independent_from_runtime_state_and_summary(self):
         registry = ProviderRegistry()
@@ -221,10 +345,32 @@ class ProviderPanelContractTests(unittest.TestCase):
         self.assertNotIn('bl_parent_id = "VIEW3D_PT_partme_blender_mcp"', panel)
         self.assertIn("PARTMEBLENDER_OT_execution_settings", panel)
         self.assertIn("PARTMEBLENDER_OT_set_provider_enabled", panel)
+        self.assertIn('community.sketchfab_api_key = self.api_key.strip()', panel)
+        self.assertIn('community.hyper3d_api_key = self.api_key.strip()', panel)
+        self.assertIn('community.hunyuan3d_secret_key = self.secret_key.strip()', panel)
+        self.assertIn("PARTMEBLENDER_OT_copy_session_id", panel)
         self.assertIn("bpy.app.timers.register(_deferred_provider_sync", panel)
         self.assertIn("bpy.app.timers.unregister(_deferred_provider_sync", panel)
-        self.assertIn("layout.prop_tabs_enum", panel)
-        self.assertIn('if provider["configurable"]:', panel)
+        self.assertIn('tabs.prop(context.window_manager, "partme_blender_ui_tab", expand=True)', panel)
+        self.assertNotIn("layout.prop_tabs_enum(", panel)
+        for icon in ("CAMERA_DATA", "AXIS_FRONT", "AXIS_SIDE", "AXIS_TOP"):
+            self.assertIn(f'"{icon}"', panel)
+        self.assertIn('if provider["configurable"] and not active:', panel)
+        self.assertIn("_status_icon_value", panel)
+        self.assertIn("icon_value=_status_icon_value", panel)
+        execution_dialog = panel.split("class PARTMEBLENDER_OT_execution_settings", 1)[1].split(
+            "class PARTMEBLENDER_OT_remote_settings", 1,
+        )[0]
+        self.assertIn('title="权限与执行"', execution_dialog)
+        self.assertIn('confirm_text="保存并应用"', execution_dialog)
+        for label in ("输出目录", "素材目录", "执行模式", "素材策略"):
+            self.assertIn(f'"{label}"', execution_dialog)
+        self.assertNotIn("self.bl_rna.properties[name]", execution_dialog)
+        provider_dialog = panel.split("class PARTMEBLENDER_OT_provider_settings", 1)[1].split(
+            "class PARTMEBLENDER_OT_cancel_provider_task", 1,
+        )[0]
+        self.assertIn('title="供应商配置"', provider_dialog)
+        self.assertIn('confirm_text="保存"', provider_dialog)
         self.assertNotIn("blendermcp_use_polypizza", panel)
 
     def test_finalized_ui_defaults_open_and_exposes_real_generic_task_controls(self):
@@ -245,6 +391,8 @@ class ProviderPanelContractTests(unittest.TestCase):
         self.assertIn("Authorization: Bearer <token>", panel)
         self.assertIn("Token 不会写入复制地址", panel)
         for label in ("相机", "正面", "侧面", "顶面", "播放 / 暂停动画", "快捷操作"):
+            self.assertIn(label, panel)
+        for label in ("素材库", "AI 生成模型", "当前帧", "配置 MCP Python"):
             self.assertIn(label, panel)
         self.assertNotIn('box.label(text="无待批准操作"', panel)
 

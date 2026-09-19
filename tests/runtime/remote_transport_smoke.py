@@ -17,7 +17,7 @@ if not (addon_root / "partme_blender_mcp").is_dir():
     raise SystemExit("Add-on root does not contain partme_blender_mcp")
 mcp_python = os.environ.get("PARTME_BLENDER_MCP_PYTHON")
 if not mcp_python or not Path(mcp_python).is_file():
-    raise SystemExit("PARTME_BLENDER_MCP_PYTHON must point to the installed 0.5.0 runtime")
+    raise SystemExit("PARTME_BLENDER_MCP_PYTHON must point to the installed release runtime")
 sys.path.insert(0, str(addon_root))
 
 import bpy  # noqa: E402
@@ -99,7 +99,9 @@ report["stdioRefresh"] = list(bpy.ops.partme_blender.refresh_access())
 
 from partme_blender_mcp.remote import manager  # noqa: E402
 
-report["stdioState"] = manager().stdio_snapshot()["state"]
+stdio_status = manager().stdio_snapshot()
+report["stdioState"] = stdio_status["state"]
+report["stdioMessage"] = stdio_status.get("message", "")
 report["httpStart"] = list(bpy.ops.partme_blender.toggle_remote(transport="streamable-http", enabled=True))
 report["sseStart"] = list(bpy.ops.partme_blender.toggle_remote(transport="sse", enabled=True))
 

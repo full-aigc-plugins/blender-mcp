@@ -156,6 +156,38 @@ class ExecutionPolicy:
                 return False
         return True
 
+    @staticmethod
+    def provider_action_cost(arguments: dict) -> Decimal | None:
+        """Return a validated non-negative provider estimate, or ``None`` when unknown."""
+        raw = arguments.get("estimatedCost")
+        if raw is None or isinstance(raw, bool):
+            return None
+        try:
+            cost = Decimal(str(raw))
+        except (InvalidOperation, ValueError):
+            return None
+        return cost if cost.is_finite() and cost >= 0 else None
+
+    def permits_provider_action(self, arguments: dict, *, committed_cost: Decimal = Decimal("0")) -> bool:
+        """Allow configured search/generation providers inside the automatic asset envelope.
+
+        Enabling and configuring a provider is the user's provider-level consent. The
+        automatic execution mode then covers asset search, download and generation while
+        destructive scene changes, external export and every non-asset action remain gated.
+        A provider-reported budget error is still terminal and is surfaced by the task UI.
+        """
+        if self.mode is not ExecutionMode.AUTO_WITH_BUDGET:
+            return False
+        if self.asset_strategy != "auto_search_generate":
+            return False
+        risk = arguments.get("risk")
+        if risk not in {"network_download", "paid_generation", "scene_import"}:
+            return False
+        if risk != "paid_generation" or self.downstream_budget_limit is None:
+            return True
+        estimate = self.provider_action_cost(arguments)
+        return estimate is not None and committed_cost + estimate <= self.downstream_budget_limit
+
     def to_audit_dict(self) -> dict[str, object]:
         """Return a non-secret, JSON-safe policy record for the session audit."""
         return {

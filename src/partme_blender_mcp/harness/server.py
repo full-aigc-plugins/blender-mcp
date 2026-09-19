@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .main_thread import MainThreadExecutor
-from .runtime import create_session
+from .runtime import create_session, prepare_session_reconfiguration
 from .snapshot import BlenderCheckpointStore
 from .transport import Endpoint, JsonLineServer, choose_endpoint
 from .transaction import TransactionManager
@@ -29,6 +29,70 @@ class HarnessRuntime:
     load_handler: object = None
     closed: bool = False
     executing: bool = False
+
+    def reconfigure(
+        self,
+        *,
+        approved_output_root: Path,
+        approved_asset_roots=(),
+        execution_policy,
+        runtime_mode: str = "managed",
+    ) -> dict:
+        """Atomically apply new path and execution policies to the live session."""
+        if self.closed or self.session.revoked:
+            raise HarnessError("SESSION_REVOKED", "runtime has closed")
+        if self.executing:
+            raise HarnessError("RECONFIGURATION_BUSY", "wait for the running command to finish")
+        if self.executor.pending_count:
+            raise HarnessError("RECONFIGURATION_BUSY", "wait for the queued command to finish")
+
+        dispatch, output_root, asset_roots = prepare_session_reconfiguration(
+            self.bpy_module,
+            self.session,
+            runtime_mode=runtime_mode,
+            approved_output_root=approved_output_root,
+            approved_asset_roots=approved_asset_roots,
+            execution_policy=execution_policy,
+        )
+        if self.descriptor_path.is_symlink():
+            raise HarnessError("UNSAFE_RUNTIME_DESCRIPTOR", "runtime descriptor must not be a symbolic link")
+        try:
+            descriptor = json.loads(self.descriptor_path.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise HarnessError("INVALID_RUNTIME_DESCRIPTOR", "runtime descriptor is unreadable") from exc
+        if not isinstance(descriptor, dict) or descriptor.get("sessionId") != self.session.session_id:
+            raise HarnessError("INVALID_RUNTIME_DESCRIPTOR", "runtime descriptor does not match the active session")
+
+        descriptor["outputRoot"] = str(output_root)
+        descriptor["assetRoots"] = [str(value) for value in asset_roots]
+        descriptor["executionPolicy"] = execution_policy.to_audit_dict()
+        temporary = self.descriptor_path.with_name(
+            f".{self.descriptor_path.name}.{secrets.token_hex(8)}.tmp"
+        )
+        try:
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            descriptor_fd = os.open(temporary, flags, 0o600)
+            with os.fdopen(descriptor_fd, "w", encoding="utf-8") as stream:
+                json.dump(descriptor, stream, sort_keys=True)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.descriptor_path)
+            os.chmod(self.descriptor_path, 0o600)
+        finally:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+
+        self.session.apply_reconfiguration(
+            dispatch=dispatch,
+            execution_policy=execution_policy,
+        )
+        return {
+            "outputRoot": str(output_root),
+            "assetRoots": [str(value) for value in asset_roots],
+            "executionPolicy": execution_policy.to_audit_dict(),
+        }
 
     def close(self) -> None:
         if self.closed:

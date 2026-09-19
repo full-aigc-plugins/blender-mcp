@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.5.0"
+VERSION = "0.5.1"
 
 
 class RepositoryStructureTests(unittest.TestCase):
@@ -158,6 +158,9 @@ class ReleasePackageTests(unittest.TestCase):
                 self.assertIn("partme_blender_mcp/__init__.py", archive_names)
                 self.assertIn("partme_blender_mcp/panel.py", archive_names)
                 self.assertIn("partme_blender_mcp/harness/server.py", archive_names)
+                for state in ("ready", "busy", "configuration_required", "disabled", "error"):
+                    self.assertIn(f"partme_blender_mcp/icons/status_{state}.png", archive_names)
+                self.assertIn("partme_blender_mcp/icons/status_ready_check.png", archive_names)
             with zipfile.ZipFile(output / f"partme-blender-mcp-runtime-{VERSION}.zip") as archive:
                 self.assertIn("pyproject.toml", archive.namelist())
                 self.assertIn("src/partme_blender_mcp/__main__.py", archive.namelist())

@@ -6,6 +6,7 @@ import copy
 import time
 from collections import OrderedDict
 from collections.abc import Callable
+from decimal import Decimal
 
 from .authorization import AuthorizationManager
 from .execution_policy import ExecutionMode, ExecutionPolicy
@@ -42,6 +43,7 @@ READ_ONLY_COMMANDS = {
     "official_uploader.inspect", "official_uploader.status",
     "transaction.begin", "transaction.commit", "transaction.rollback", "session.authorize",
 }
+READ_ONLY_COMMANDS.add("provider.external_action")
 READ_ONLY_COMMANDS.add("provider.task_control")
 READ_ONLY_COMMANDS.update({'job.submit','job.status','job.cancel','job.recover'})
 INSPECTION_COMMANDS = {
@@ -98,6 +100,7 @@ class HarnessSession:
         self._audit: list[dict] = []
         self._approved_snapshots: dict[str, int] = {}
         self.execution_policy = execution_policy or ExecutionPolicy.interactive()
+        self._downstream_budget_spent = Decimal("0")
         self.paused = False
         self.revoked = False
         self.control_epoch = 0
@@ -158,7 +161,13 @@ class HarnessSession:
                     retryable=True,
                 )
             automatic_export = request.command == "export.file" and self.execution_policy.permits_fresh_export(request.arguments)
-            if request.command in GATED_COMMANDS and not automatic_export:
+            automatic_provider_action = (
+                request.command == "provider.external_action"
+                and self.execution_policy.permits_provider_action(
+                    request.arguments, committed_cost=self._downstream_budget_spent,
+                )
+            )
+            if request.command in GATED_COMMANDS and not automatic_export and not automatic_provider_action:
                 if self.authorization.verify(request.authorization, request.request_id, request.command):
                     pass
                 elif self._consume_local_approval(request.request_id, request.command):
@@ -192,6 +201,10 @@ class HarnessSession:
                 ) or {}
             else:
                 result = self.dispatch(request.command, request.arguments) or {}
+            if request.command == "provider.external_action" and request.arguments.get("risk") == "paid_generation":
+                estimate = self.execution_policy.provider_action_cost(request.arguments)
+                if estimate is not None:
+                    self._downstream_budget_spent += estimate
             if mutation:
                 self.scene_revision += 1
             if request.command == "scene.inspect":
@@ -323,12 +336,35 @@ class HarnessSession:
                 "stage": self._stage, "progress": self._progress,
                 "lastCommand": self._last_command, "changedObjects": list(self._changed_objects),
                 "pendingAuthorizations": len(self._pending_authorizations),
+                "downstreamBudgetSpent": str(self._downstream_budget_spent),
                 "lastError": copy.deepcopy(self._last_error)}
 
     def pending_authorizations(self) -> list[dict]:
         """Gated requests refused for lack of approval, for the trusted local UI."""
         self._prune_authorizations()
         return [copy.deepcopy(entry) for entry in self._pending_authorizations.values()]
+
+    def apply_reconfiguration(self, *, dispatch, execution_policy, source: str = "local_ui") -> None:
+        """Commit a prevalidated runtime-policy replacement on Blender's owning thread.
+
+        The caller must build the replacement command registry and persist the matching
+        private descriptor before invoking this method. Changing the policy invalidates
+        cached responses, committed export grants, and any short-lived local approval.
+        """
+        self.dispatch = dispatch
+        self.execution_policy = execution_policy
+        self.control_epoch += 1
+        self._responses.clear()
+        self._approved_snapshots.clear()
+        self._local_approvals.clear()
+        self._audit.append({
+            "command": "session.reconfigure",
+            "source": source,
+            "status": "succeeded",
+            "sceneRevision": self.scene_revision,
+            "executionPolicy": self.execution_policy.to_audit_dict(),
+        })
+        self._notify()
 
     def approve_pending(self, request_id: str, *, ttl_seconds: int = LOCAL_APPROVAL_TTL_SECONDS,
                         source: str = "local_ui") -> dict:

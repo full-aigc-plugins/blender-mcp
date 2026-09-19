@@ -1,4 +1,4 @@
-PartMe Blender MCP 0.5.0
+PartMe Blender MCP 0.5.1
 
 最简单的安装方式 / Simplest installation:
 
@@ -14,7 +14,7 @@ Windows:
 
 然后在 Blender:
   Edit > Preferences > Add-ons > Install from Disk
-  选择同目录的 partme-blender-mcp-addon-0.5.0.zip
+  选择同目录的 partme-blender-mcp-addon-0.5.1.zip
   启用 PartMe Blender MCP
   按 N > PartMe MCP > Start MCP Server
 

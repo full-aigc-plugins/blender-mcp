@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import re
@@ -19,6 +20,13 @@ VALID_CATEGORIES = {"asset_library", "ai_model"}
 VALID_SOURCES = {"native", "community"}
 VALID_STATES = {"ready", "disabled", "configuration_required", "unavailable", "busy", "error"}
 VALID_RISKS = {"read", "network_download", "paid_generation", "scene_import", "external_export"}
+ACTIVE_TASK_STATUS = {
+    "submitting": "提交中",
+    "generating": "生成中",
+    "downloading": "下载中",
+    "staged": "等待导入",
+    "importing": "导入中",
+}
 SECRET_KEY = re.compile(r"(?:api.?key|token|secret|password|credential)", re.IGNORECASE)
 STATUS_COMMAND = re.compile(r"get_[a-z0-9_]+_status")
 
@@ -102,7 +110,7 @@ class ProviderRegistry:
             metadata = dict(item.get("metadata") or {})
             status_probe = None
             if item.get("source") == "community" and metadata.get("statusCommand"):
-                status_probe = _community_status_probe(metadata["statusCommand"])
+                status_probe = _community_status_probe(metadata["statusCommand"], metadata)
             self.register(ProviderDefinition(
                 provider_id=item.get("providerId", ""),
                 label=item.get("label", ""),
@@ -139,12 +147,16 @@ class ProviderRegistry:
         rows = []
         for definition in self._providers.values():
             status = self._base_status(definition)
-            enabled = self._enabled(definition, context)
+            preferred_enabled = self._enabled(definition, context)
+            enabled = preferred_enabled and status["state"] != "configuration_required"
             actions = list(definition.actions)
             task = self._task_registry.latest(definition.provider_id)
             active = task is not None and task["active"]
             if active:
-                status = {"state": "busy", "statusText": task.get("statusText") or task.get("stage") or "处理中"}
+                status = {
+                    "state": "busy",
+                    "statusText": task.get("statusText") or ACTIVE_TASK_STATUS.get(task["state"], "处理中"),
+                }
                 if "cancel" not in actions:
                     actions.append("cancel")
             elif not enabled and status["state"] != "configuration_required":
@@ -164,7 +176,7 @@ class ProviderRegistry:
                 # configuration action must succeed before a disabled provider can start.
                 "toggleLocked": (
                     not definition.mutable or active or
-                    (not enabled and status["state"] == "configuration_required")
+                    status["state"] == "configuration_required"
                 ),
                 "state": status["state"],
                 "statusText": str(status.get("statusText") or status["state"]),
@@ -257,11 +269,89 @@ def _polypizza_status(_context) -> dict:
             {"state": "configuration_required", "statusText": "需要 API Key"})
 
 
-def _community_status_probe(command: str):
+def _community_status(result: dict, *, ready_text: str = "已配置") -> dict:
+    if result.get("error"):
+        return {"state": "error", "statusText": "状态检查失败"}
+    if result.get("enabled") is True:
+        return {"state": "ready", "statusText": ready_text}
+    message = str(result.get("message") or "").lower()
+    needs_configuration = any(token in message for token in (
+        "api key", "api url", "secretid", "secretkey", "not given", "invalid",
+    ))
+    return {
+        "state": "configuration_required" if needs_configuration else "disabled",
+        "statusText": "需要配置" if needs_configuration else "未启用",
+    }
+
+
+def _in_process_community_status(command: str, metadata: dict, context) -> dict | None:
+    """Read the community add-on on Blender's main thread without a socket round trip.
+
+    The community bridge services its socket queue on Blender's main thread. Calling
+    that socket from another panel operator on the same thread deadlocks until timeout.
+    A direct status read also keeps credentials inside Blender.
+    """
+    if context is None or not metadata.get("preferencesModule"):
+        return None
+    try:
+        bpy = importlib.import_module("bpy")
+    except (ImportError, ModuleNotFoundError):
+        return None
+    server = getattr(getattr(bpy, "types", None), "blendermcp_server", None)
+    if server is None:
+        return None
+    scene = getattr(context, "scene", None)
+    enabled = bool(getattr(scene, metadata.get("enableProperty", ""), False))
+
+    if command == "get_sketchfab_status":
+        key_reader = getattr(server, "_get_sketchfab_api_key", None)
+        if not callable(key_reader) or not key_reader():
+            return {"state": "configuration_required", "statusText": "需要配置"}
+        return ({"state": "ready", "statusText": "已配置"} if enabled else
+                {"state": "disabled", "statusText": "未启用"})
+
+    if command == "get_hyper3d_status":
+        key_reader = getattr(server, "_get_hyper3d_api_key", None)
+        if not callable(key_reader) or not key_reader():
+            return {"state": "configuration_required", "statusText": "需要配置"}
+        return ({"state": "ready", "statusText": "已配置"} if enabled else
+                {"state": "disabled", "statusText": "未启用"})
+
+    if command == "get_hunyuan3d_status":
+        mode = getattr(scene, "blendermcp_hunyuan3d_mode", "OFFICIAL_API")
+        if mode == "LOCAL_API":
+            url_reader = getattr(server, "_get_hunyuan3d_api_url", None)
+            configured = callable(url_reader) and bool(url_reader())
+        else:
+            id_reader = getattr(server, "_get_hunyuan3d_secret_id", None)
+            key_reader = getattr(server, "_get_hunyuan3d_secret_key", None)
+            configured = (callable(id_reader) and callable(key_reader)
+                          and bool(id_reader()) and bool(key_reader()))
+        if not configured:
+            return {"state": "configuration_required", "statusText": "需要配置"}
+        return ({"state": "ready", "statusText": "已配置"} if enabled else
+                {"state": "disabled", "statusText": "未启用"})
+
+    status_reader = getattr(server, command, None)
+    if not callable(status_reader):
+        return None
+    result = status_reader()
+    if not isinstance(result, dict):
+        raise ProviderRegistryError("community status method returned an invalid result")
+    return _community_status(
+        result, ready_text="可用" if command == "get_polyhaven_status" else "已配置",
+    )
+
+
+def _community_status_probe(command: str, metadata: dict | None = None):
     if not isinstance(command, str) or STATUS_COMMAND.fullmatch(command) is None:
         raise ProviderRegistryError("community statusCommand is invalid")
+    probe_metadata = dict(metadata or {})
 
-    def probe(_context) -> dict:
+    def probe(context) -> dict:
+        direct = _in_process_community_status(command, probe_metadata, context)
+        if direct is not None:
+            return direct
         payload = json.dumps({"type": command, "params": {}}, separators=(",", ":")) + "\n"
         try:
             with socket.create_connection(("127.0.0.1", 9876), timeout=0.5) as connection:
@@ -281,17 +371,10 @@ def _community_status_probe(command: str):
             return {"state": "error", "statusText": "状态响应无效"}
         if envelope.get("status") != "success" or not isinstance(envelope.get("result"), dict):
             return {"state": "error", "statusText": "状态检查失败"}
-        result = envelope["result"]
-        if result.get("error"):
-            return {"state": "error", "statusText": "状态检查失败"}
-        if result.get("enabled") is True:
-            return {"state": "ready", "statusText": "已配置"}
-        message = str(result.get("message") or "").lower()
-        needs_configuration = any(token in message for token in ("api key", "secretid", "secretkey", "not given"))
-        return {
-            "state": "configuration_required" if needs_configuration else "disabled",
-            "statusText": "需要配置" if needs_configuration else "未启用",
-        }
+        return _community_status(
+            envelope["result"],
+            ready_text="可用" if command == "get_polyhaven_status" else "已配置",
+        )
 
     return probe
 
@@ -300,11 +383,13 @@ def register_native_providers(registry: ProviderRegistry) -> None:
     registry.register(ProviderDefinition(
         provider_id="local_library", label="本地素材库", category="asset_library", source="native",
         risks=("read", "scene_import"), mutable=False, status_probe=_asset_root_status,
+        metadata={"uiOrder": 10},
     ))
     registry.register(ProviderDefinition(
         provider_id="polypizza", label="Poly Pizza", category="asset_library", source="native",
         risks=("read", "network_download", "scene_import"), actions=("configure",),
-        enabled=False, configurable=True, status_probe=_polypizza_status,
+        enabled=True, configurable=True, status_probe=_polypizza_status,
+        metadata={"uiOrder": 40},
     ))
 
 

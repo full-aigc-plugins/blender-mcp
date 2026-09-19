@@ -6,6 +6,35 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-20
+
+### Added
+
+- Provider-specific credential dialogs for PartMe Poly Pizza, Sketchfab, Hyper3D Rodin
+  and Tencent Hunyuan 3D, with secrets retained only in Blender user preferences.
+- Atomic live execution-policy reconfiguration and visible foreground Blender acceptance
+  coverage for normal, generating, failed and local-approval states.
+- Packaged green, amber, blue, gray and red status icons plus provider `uiOrder`
+  metadata, so future providers keep the confirmed visual hierarchy without renderer edits.
+
+### Changed
+
+- The four workbench tabs now use an always-visible expanded enum row, preserving the
+  confirmed V4 layout at narrow N-panel widths where `prop_tabs_enum` hid inactive tabs.
+- Provider cards, Work progress, quick-operation icons and automatic generation routing
+  now follow the confirmed V4 visual and interaction contract.
+- Paid provider operations remain automatic while the cumulative configured budget permits
+  them and enter the trusted Blender approval flow before an over-budget operation runs.
+
+### Fixed
+
+- Community provider refresh now reads the in-process Blender service instead of making
+  a loopback call that could deadlock Blender's main-thread command queue.
+- Missing provider credentials force the switch off and locked; configured native Poly
+  Pizza follows its intended enabled-by-default PartMe path.
+- Sketchfab status refresh no longer performs a blocking network request from Blender's
+  UI thread.
+
 ## [0.5.0] - 2026-09-20
 
 ### Added
@@ -154,7 +183,8 @@ All notable changes to this project are documented here. The format follows
 - Cross-client guides (Codex, Claude Desktop, Claude Code, MiniMax Design, Cursor, generic
   MCP, macOS, Windows) with a documentation contract test.
 
-[Unreleased]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.2.1...v0.3.0

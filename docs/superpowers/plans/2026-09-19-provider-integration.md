@@ -12,7 +12,7 @@
 - [x] 修复 `PluginMcpAdapter` 跨页唯一性并增加真实适配器测试。
 - [x] 为 `scripts/harness/` 建立声明式差分门禁。
 - [x] 更新活动 README、仓库 URL 和验证状态。
-- [ ] 构建 `blender-mcp 0.5.0` 最终资产，更新插件 runtime lock。
+- [ ] 构建 `blender-mcp 0.5.1` 最终资产，更新插件 runtime lock。
 - [ ] 运行单元、分发、真实 Blender 与客户端矩阵验收。
 - [ ] 发布 runtime、插件和市场清单；分别记录远端与安装证据。
 
@@ -24,5 +24,5 @@
 - [x] 增加真实供应商启停 Operator、定向配置入口、busy 锁定和任务终止联动。
 - [x] 使用 Blender 用户配置持久化供应商偏好，不把密钥或偏好写入`.blend`。
 - [x] 完成定向单元测试、静态 Add-on 合约测试、可复现打包和真实 Blender 供应商启停验收。
-- [ ] 在可见 Blender UI 中完成`240 px`窄宽度、四 Tab、错误、密钥缺失、生成中和审批截图验收。
+- [x] 在可见 Blender UI 中完成`240 px`窄宽度、四 Tab、错误、密钥缺失、生成中和审批截图验收。
 - [x] 用官方 MCP Python SDK 替换自写 stdio，并实现真实 Streamable HTTP/SSE 监听器及远程安全设置。

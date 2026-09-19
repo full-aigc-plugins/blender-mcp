@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from partme_blender_mcp.harness.errors import HarnessError  # noqa: E402
+from partme_blender_mcp.harness.execution_policy import ExecutionPolicy  # noqa: E402
 from partme_blender_mcp.harness.session import HarnessSession  # noqa: E402
 
 
@@ -70,6 +71,103 @@ class DenialAndPendingTests(unittest.TestCase):
         fixture = SessionFixture()
         self.assertEqual(fixture.call("r1", "scene.inspect", {}), "succeeded")
         self.assertEqual(fixture.session.pending_authorizations(), [])
+
+    def test_auto_asset_policy_runs_enabled_provider_generation_without_approval_card(self):
+        calls = []
+        policy = ExecutionPolicy.from_dict({
+            "mode": "auto_with_budget",
+            "approvedOutputRoot": "/tmp/partme-output",
+            "assetStrategy": "auto_search_generate",
+        })
+        session = HarnessSession(
+            "approval-session",
+            dispatch=lambda command, arguments: calls.append((command, arguments)) or {
+                "changedObjects": [], "result": {"approved": True},
+            },
+            execution_policy=policy,
+        )
+        fixture = SessionFixture()
+        fixture.session = session
+
+        result = fixture.call(
+            "provider-auto", "provider.external_action",
+            {"providerId": "hunyuan3d", "action": "generate", "risk": "paid_generation"},
+            revision=0,
+        )
+
+        self.assertEqual(result, "succeeded")
+        self.assertEqual(session.pending_authorizations(), [])
+        self.assertEqual(calls[0][0], "provider.external_action")
+        self.assertEqual(session.scene_revision, 0, "a provider gate must not pretend the Blender scene changed")
+
+    def test_paid_generation_over_cumulative_budget_requires_local_approval(self):
+        calls = []
+        policy = ExecutionPolicy.from_dict({
+            "mode": "auto_with_budget",
+            "approvedOutputRoot": "/tmp/partme-output",
+            "assetStrategy": "auto_search_generate",
+            "downstreamBudgetLimit": "5.00",
+        })
+        session = HarnessSession(
+            "approval-session",
+            dispatch=lambda command, arguments: calls.append((command, arguments)) or {
+                "changedObjects": [], "result": {"approved": True},
+            },
+            execution_policy=policy,
+        )
+        fixture = SessionFixture()
+        fixture.session = session
+
+        first = fixture.call(
+            "provider-budget-1", "provider.external_action",
+            {"providerId": "hunyuan3d", "action": "generate", "risk": "paid_generation",
+             "estimatedCost": "3.00"}, revision=0,
+        )
+        second = fixture.call(
+            "provider-budget-2", "provider.external_action",
+            {"providerId": "hunyuan3d", "action": "generate", "risk": "paid_generation",
+             "estimatedCost": "3.00"}, revision=0,
+        )
+
+        self.assertEqual(first, "succeeded")
+        self.assertEqual(second, "AUTHORIZATION_REQUIRED")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(session.status()["downstreamBudgetSpent"], "3.00")
+        pending = session.pending_authorizations()[0]
+        self.assertEqual(pending["requestId"], "provider-budget-2")
+        self.assertIn("estimatedCost=3.00", pending["summary"])
+
+    def test_configured_budget_requires_an_estimate_before_automatic_generation(self):
+        policy = ExecutionPolicy.from_dict({
+            "mode": "auto_with_budget",
+            "approvedOutputRoot": "/tmp/partme-output",
+            "assetStrategy": "auto_search_generate",
+            "downstreamBudgetLimit": "5.00",
+        })
+        fixture = SessionFixture()
+        fixture.session = HarnessSession(
+            "approval-session", dispatch=fixture.dispatch, execution_policy=policy,
+        )
+
+        result = fixture.call(
+            "provider-unknown-cost", "provider.external_action",
+            {"providerId": "hyper3d", "action": "generate", "risk": "paid_generation"}, revision=0,
+        )
+
+        self.assertEqual(result, "AUTHORIZATION_REQUIRED")
+        self.assertEqual(fixture.calls, [])
+
+    def test_interactive_provider_generation_still_requires_local_approval(self):
+        fixture = SessionFixture()
+
+        result = fixture.call(
+            "provider-review", "provider.external_action",
+            {"providerId": "hunyuan3d", "action": "generate", "risk": "paid_generation"},
+            revision=0,
+        )
+
+        self.assertEqual(result, "AUTHORIZATION_REQUIRED")
+        self.assertEqual(fixture.session.pending_authorizations()[0]["requestId"], "provider-review")
 
     def test_retry_before_approval_stays_refused(self):
         fixture = SessionFixture()

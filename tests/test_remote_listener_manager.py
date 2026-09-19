@@ -7,6 +7,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -119,6 +120,28 @@ class RemoteListenerManagerTests(unittest.TestCase):
         snapshot = self.manager.snapshot(preferences, "streamable-http")
         self.assertEqual(snapshot["state"], "configuration_required")
         self.assertIn("HTTPS", snapshot["message"])
+
+    def test_stdio_missing_sdk_reports_recovery_instead_of_traceback(self):
+        failure = SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr="Traceback (most recent call last):\nModuleNotFoundError: No module named 'mcp'\n",
+        )
+        with patch.object(self.remote.subprocess, "run", return_value=failure):
+            status = self.manager.probe_stdio(_preferences())
+
+        self.assertEqual(status["state"], "unavailable")
+        self.assertIn("官方 MCP SDK", status["message"])
+        self.assertIn("MCP Python", status["message"])
+        self.assertNotIn("Traceback", status["message"])
+
+    def test_stdio_probe_allows_official_sdk_cold_start(self):
+        ready = SimpleNamespace(returncode=0, stdout="ready\n", stderr="")
+        with patch.object(self.remote.subprocess, "run", return_value=ready) as run:
+            status = self.manager.probe_stdio(_preferences())
+
+        self.assertEqual(status, {"state": "ready", "statusText": "已就绪", "message": ""})
+        self.assertEqual(run.call_args.kwargs["timeout"], 8)
 
 
 if __name__ == "__main__":
