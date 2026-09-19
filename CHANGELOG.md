@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-19
+
+### Added
+
+- Extensible, data-driven Blender panels for asset libraries and AI model providers,
+  including normalized status, configuration actions, task progress and cancellation.
+- A provider-neutral generation task protocol that survives community-provider polling
+  and can recover the UI state after Blender restarts.
+- An asset strategy setting with automatic search-and-generation as the default.
+
+### Changed
+
+- The PartMe production panel now follows the approved native Blender layout: connection,
+  permissions, providers, generation progress, approvals and quick viewport controls.
+- Community provider status is refreshed explicitly and cached; drawing the panel never
+  performs network I/O.
+
+### Security
+
+- Provider results continue through approved directories and guarded transactional import.
+- Cancelling a provider without a remote cancellation API stops local polling/import and
+  explicitly reports that the remote job may continue.
+
 ## [0.3.0] - 2026-09-19
 
 ### Added
@@ -105,7 +128,8 @@ All notable changes to this project are documented here. The format follows
 - Cross-client guides (Codex, Claude Desktop, Claude Code, MiniMax Design, Cursor, generic
   MCP, macOS, Windows) with a documentation contract test.
 
-[Unreleased]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.1.2...v0.2.0

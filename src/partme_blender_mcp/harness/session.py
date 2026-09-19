@@ -42,6 +42,7 @@ READ_ONLY_COMMANDS = {
     "official_uploader.inspect", "official_uploader.status",
     "transaction.begin", "transaction.commit", "transaction.rollback", "session.authorize",
 }
+READ_ONLY_COMMANDS.add("provider.task_control")
 READ_ONLY_COMMANDS.update({'job.submit','job.status','job.cancel','job.recover'})
 INSPECTION_COMMANDS = {
     "capability.list", "capability.describe",
@@ -54,6 +55,7 @@ INSPECTION_COMMANDS = {
     "session.status", "session.capabilities", "session.pause", "session.set_progress",
     "scene.inspect", "preview.capture", "view.present", "view.set", "view.focus", "playback.set_frame", "playback.set",
     "official_uploader.inspect", "official_uploader.status",
+    "provider.task_control",
 }
 READ_ONLY_COMMANDS.update(INSPECTION_COMMANDS | {"session.resume"})
 GATED_COMMANDS = {

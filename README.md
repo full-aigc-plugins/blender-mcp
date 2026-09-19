@@ -70,7 +70,7 @@ execution, snapshots, rollback, manual takeover, and verified exports.
 |:---|:---|
 | Product | PartMe Blender MCP |
 | MCP server ID | `partme_blender` |
-| Version | `0.3.0` release |
+| Version | `0.4.0` release |
 | MCP protocol | `2025-06-18` |
 | Harness compatibility | `codex-blender/v1` |
 | Blender | 4.2–5.2, only as verified per matrix |
@@ -108,11 +108,11 @@ Download Blender from the [official website](https://www.blender.org/download/) 
 
 ### 2. Download the release
 
-Download from [v0.3.0](https://github.com/full-aigc-plugins/blender-mcp/releases/tag/v0.3.0):
+Download from [v0.4.0](https://github.com/full-aigc-plugins/blender-mcp/releases/tag/v0.4.0):
 
 ```text
-partme-blender-mcp-addon-0.3.0.zip
-partme-blender-mcp-runtime-0.3.0.zip
+partme-blender-mcp-addon-0.4.0.zip
+partme-blender-mcp-runtime-0.4.0.zip
 SHA256SUMS.txt
 ```
 
@@ -125,7 +125,7 @@ For the simplest path, download the platform bundle, extract it, and run
 The platform bundles are also valid Python projects, so an accidental pip install now works.
 
 ```bash
-python -m pip install ./partme-blender-mcp-runtime-0.3.0.zip
+python -m pip install ./partme-blender-mcp-runtime-0.4.0.zip
 python -m partme_blender_mcp --help
 ```
 
@@ -133,7 +133,7 @@ python -m partme_blender_mcp --help
 
 1. Blender → **Edit → Preferences → Add-ons**.
 2. Top-right menu → **Install from Disk…**.
-3. Select `partme-blender-mcp-addon-0.3.0.zip` without extracting it.
+3. Select `partme-blender-mcp-addon-0.4.0.zip` without extracting it.
 4. Enable **PartMe Blender MCP**.
 5. Return to 3D View, press `N`, open **PartMe MCP**.
 6. Choose approved directories and click **Start MCP Server**.
@@ -244,7 +244,7 @@ installs as one package from either archive. See [CONTRIBUTING.md](CONTRIBUTING.
 
 ## Compatibility and migration
 
-`0.3.0` is the current release. The Harness keeps `codex-blender/v1` temporarily for differential migration from `codex-blender-plugin`; all public identity, MCP server ID, and Add-on surfaces use PartMe. Untested clients remain `DOCUMENTED_NOT_RUN`.
+`0.4.0` is the current release. The Harness keeps `codex-blender/v1` temporarily for differential migration from `codex-blender-plugin`; all public identity, MCP server ID, and Add-on surfaces use PartMe. Untested clients remain `DOCUMENTED_NOT_RUN`.
 
 ## Deep documentation
 

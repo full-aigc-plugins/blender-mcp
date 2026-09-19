@@ -151,6 +151,7 @@ class ArchiveIntegrityTests(unittest.TestCase):
         for expected in (
             "partme_blender_mcp.harness.mcp_adapter",
             "partme_blender_mcp.harness.version",
+            "partme_blender_mcp.harness.provider_tasks",
             "partme_blender_mcp.validate_model_in_blender",
             "partme_blender_mcp.__main__",
             "partme_blender_mcp.doctor",

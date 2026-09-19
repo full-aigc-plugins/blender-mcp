@@ -4,13 +4,13 @@
 > Applies to: Blender 4.2--5.2, macOS / Windows / Linux  
 > Verified: 2026-09-15
 
-> **Pre-release notice**: `v0.3.0` is a release. Download only from [GitHub Release](https://github.com/full-aigc-plugins/blender-mcp/releases/latest) and verify SHA-256 before installing.
+> **Pre-release notice**: `v0.4.0` is a release. Download only from [GitHub Release](https://github.com/full-aigc-plugins/blender-mcp/releases/latest) and verify SHA-256 before installing.
 
 ## 1. Prerequisites
 
 - Blender 4.2 or later installed ([official download](https://www.blender.org/download/)).
 - PartMe Blender MCP Runtime installed (see [macOS install](macos.zh-CN.md) or [Windows install](windows.zh-CN.md)).
-- `partme-blender-mcp-addon-0.3.0.zip` downloaded from Release and SHA-256 verified.
+- `partme-blender-mcp-addon-0.4.0.zip` downloaded from Release and SHA-256 verified.
 
 ## 2. Install from Disk
 
@@ -22,7 +22,7 @@
 
    ![Install from Disk](../assets/reference/blender-install-from-disk.png)
 
-3. Select `partme-blender-mcp-addon-0.3.0.zip`. Do not extract it.
+3. Select `partme-blender-mcp-addon-0.4.0.zip`. Do not extract it.
 4. Search for and enable **PartMe Blender MCP**.
 
 Do not confuse the community plugin **MCP for Blender** with the PartMe Add-on.

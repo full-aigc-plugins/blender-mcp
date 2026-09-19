@@ -25,6 +25,9 @@ class ExecutionMode(str, Enum):
     REVIEW_ONLY = "review_only"
 
 
+VALID_ASSET_STRATEGIES = frozenset({"auto_search_generate", "search_only", "disabled"})
+
+
 _IRREVERSIBLE_EVENTS = frozenset(
     {"delete", "overwrite", "expert_python", "path_escape", "budget_exceeded", "recovery_resubmit"}
 )
@@ -39,6 +42,7 @@ class ExecutionPolicy:
     allow_designed_proxies: bool = False
     downstream_budget_limit: Decimal | None = None
     export_formats: tuple[str, ...] = ("blend", "glb", "gltf", "fbx", "obj", "stl", "png", "jpg", "mp4")
+    asset_strategy: str = "auto_search_generate"
 
     def __post_init__(self):
         try:
@@ -47,6 +51,8 @@ class ExecutionPolicy:
             raise ExecutionPolicyError("unknown execution mode") from exc
         if type(self.allow_designed_proxies) is not bool:
             raise ExecutionPolicyError("allow_designed_proxies must be boolean")
+        if self.asset_strategy not in VALID_ASSET_STRATEGIES:
+            raise ExecutionPolicyError("unknown asset strategy")
         object.__setattr__(self, "downstream_budget_limit", self._parse_budget(self.downstream_budget_limit))
         if not isinstance(self.export_formats, (list, tuple)) or not all(
             isinstance(value, str) and value in {"blend", "glb", "gltf", "fbx", "obj", "stl", "png", "jpg", "mp4"}
@@ -65,12 +71,18 @@ class ExecutionPolicy:
     @classmethod
     def from_dict(cls, payload: dict) -> "ExecutionPolicy":
         if not isinstance(payload, dict) or set(payload) - {
-            "mode", "approvedOutputRoot", "allowDesignedProxies", "downstreamBudgetLimit", "exportFormats"
+            "mode", "approvedOutputRoot", "allowDesignedProxies", "downstreamBudgetLimit", "exportFormats",
+            "assetStrategy",
         }:
             raise ExecutionPolicyError("invalid execution policy fields")
-        return cls(payload.get("mode", "interactive"), payload.get("approvedOutputRoot"),
-                   payload.get("allowDesignedProxies", False), payload.get("downstreamBudgetLimit"),
-                   tuple(payload.get("exportFormats", cls.__dataclass_fields__["export_formats"].default)))
+        return cls(
+            mode=payload.get("mode", "interactive"),
+            approved_output_root=payload.get("approvedOutputRoot"),
+            allow_designed_proxies=payload.get("allowDesignedProxies", False),
+            downstream_budget_limit=payload.get("downstreamBudgetLimit"),
+            export_formats=tuple(payload.get("exportFormats", cls.__dataclass_fields__["export_formats"].default)),
+            asset_strategy=payload.get("assetStrategy", "auto_search_generate"),
+        )
 
     @classmethod
     def interactive(cls) -> "ExecutionPolicy":
@@ -121,7 +133,7 @@ class ExecutionPolicy:
         if self.mode is ExecutionMode.REVIEW_ONLY:
             return True
         if event == "missing_asset":
-            return not self.allow_designed_proxies
+            return self.asset_strategy != "auto_search_generate" and not self.allow_designed_proxies
         return event not in {"milestone_complete", "final_artifact_report", "mutation", "export"}
 
     def permits_fresh_export(self, arguments: dict) -> bool:
@@ -150,6 +162,7 @@ class ExecutionPolicy:
             "mode": self.mode.value,
             "approvedOutputRoot": self.approved_output_root,
             "allowDesignedProxies": self.allow_designed_proxies,
+            "assetStrategy": self.asset_strategy,
             "exportFormats": list(self.export_formats),
             "downstreamBudgetLimit": (
                 str(self.downstream_budget_limit) if self.downstream_budget_limit is not None else None

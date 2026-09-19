@@ -47,6 +47,7 @@ from .registry import CommandRegistry
 from .runtime_catalog import RuntimeCommandRegistry
 from .session import HarnessSession
 from .execution_policy import ExecutionMode, ExecutionPolicy
+from .provider_tasks import ProviderTaskError, get_provider_task_registry
 
 
 def build_registry(bpy_module, *, runtime_mode: str = "managed", approved_output_root: Path | None = None, approved_asset_roots=(), revision_provider=lambda: 0) -> CommandRegistry:
@@ -99,6 +100,13 @@ def build_registry(bpy_module, *, runtime_mode: str = "managed", approved_output
     advanced = AdvancedPythonExecutor(bpy_module)
     exporter = Exporter(bpy_module, approved_output_root=approved_output_root) if approved_output_root else None
     preview = PreviewEngine(bpy_module)
+
+    def provider_task_control(arguments):
+        try:
+            result = get_provider_task_registry().control(arguments)
+        except ProviderTaskError as exc:
+            raise HarnessError("INVALID_ARGUMENT", str(exc)) from exc
+        return {"changedObjects": [], "result": result}
 
     registry = RuntimeCommandRegistry(bpy_module, output_root=approved_output_root, asset_roots=approved_asset_roots)
     registry.register('capability.list',
@@ -227,6 +235,12 @@ def build_registry(bpy_module, *, runtime_mode: str = "managed", approved_output
                       validate=closed_arguments(required=(),optional=('query','licence','limit')), risk='read')
     registry.register('asset.polypizza_download',assets.polypizza_download,
                       validate=closed_arguments(required=('modelId',)), risk='gated')
+    registry.register('provider.task_control', provider_task_control,
+                      validate=closed_arguments(
+                          required=('operation',),
+                          optional=('providerId', 'taskId', 'state', 'progress', 'stage',
+                                    'statusText', 'message', 'cancelSupported')),
+                      risk='read')
     registry.register('provider.external_action',
                       lambda arguments: {'changedObjects': [], 'result': {
                           'providerId': arguments['providerId'], 'action': arguments['action'],

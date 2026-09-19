@@ -26,6 +26,11 @@ def start(bpy_module, *, session_id: str | None = None, runtime_dir: Path | None
     session_id = session_id or "partme-" + secrets.token_hex(8)
     runtime_dir = Path(runtime_dir or os.environ.get("PARTME_BLENDER_RUNTIME_DIR") or (Path(tempfile.gettempdir()) / "partme-blender"))
     function = start_function or _default_start_function()
+    try:
+        from .harness.provider_tasks import get_provider_task_registry
+    except ImportError:
+        from scripts.harness.provider_tasks import get_provider_task_registry
+    get_provider_task_registry().clear()
     _CURRENT = function(
         bpy_module,
         session_id=session_id,
@@ -43,6 +48,11 @@ def stop():
     if _CURRENT is not None:
         _CURRENT.close()
         _CURRENT = None
+    try:
+        from .harness.provider_tasks import get_provider_task_registry
+    except ImportError:
+        from scripts.harness.provider_tasks import get_provider_task_registry
+    get_provider_task_registry().clear()
 
 
 def current():

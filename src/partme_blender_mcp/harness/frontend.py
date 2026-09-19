@@ -6,6 +6,15 @@ for the live session and is removed on revoke, file load or shutdown.
 from .commands.view import ViewCommands
 
 
+def _draw_progress(layout, progress):
+    if progress is None:
+        return
+    if hasattr(layout, "progress"):
+        layout.progress(factor=progress, type="BAR", text=f"{progress:.0%}")
+    else:
+        layout.label(text=f"制作进度 {progress:.0%}", icon="TIME")
+
+
 class Frontend:
     def __init__(self, bpy_module, runtime):
         self.bpy = bpy_module
@@ -128,33 +137,36 @@ class Frontend:
             def draw(self, context):
                 layout = self.layout
                 status = runtime.session.status()
-                layout.label(text=status["sessionId"], icon="LINKED")
-                layout.label(text="场景：" + context.scene.name)
-                layout.label(text="模式：" + {"interactive": "交互审阅", "auto_with_budget": "自动制作", "review_only": "只读检查"}[status["executionPolicy"]["mode"]])
-                layout.label(text="阶段：" + ("就绪" if status["stage"] == "Ready" else status["stage"]))
-                if status["progress"] is not None:
-                    layout.label(text=f'报告进度：{status["progress"]:.0%}')
-                layout.label(text=f'场景版本 {status["sceneRevision"]} | 等待操作 {runtime.executor.pending_count}')
+                box = layout.box()
+                box.label(text="会话 ID  " + status["sessionId"], icon="LINKED")
+                row = box.row(align=True)
+                row.label(text="阶段：" + ("就绪" if status["stage"] == "Ready" else status["stage"]))
+                row.label(text=f'场景版本 {status["sceneRevision"]} | 等待操作 {runtime.executor.pending_count}')
+                _draw_progress(box, status["progress"])
                 if status["lastCommand"]:
-                    layout.label(text="最近操作：" + status["lastCommand"])
+                    box.label(text="最近操作：" + status["lastCommand"])
                 for name in status["changedObjects"][:4]:
-                    layout.label(text=name, icon="OBJECT_DATA")
+                    box.label(text=name, icon="OBJECT_DATA")
                 if status["lastError"]:
-                    layout.label(text=status["lastError"]["code"], icon="ERROR")
+                    error = box.row()
+                    error.alert = True
+                    error.label(text=status["lastError"]["code"], icon="ERROR")
                 if status["needsInspection"]:
-                    layout.label(text="等待重新检查场景", icon="INFO")
+                    box.label(text="等待重新检查场景", icon="INFO")
                 self.draw_approvals(layout)
                 row = layout.row(align=True)
+                row.scale_y = 1.15
                 if status["paused"]:
                     row.operator("partme_blender.resume_work", icon="PLAY")
                 else:
                     row.operator("partme_blender.pause_work", icon="PAUSE")
                 row.operator("partme_blender.revoke_work", text="撤销连接", icon="CANCEL")
+                layout.label(text="快捷操作", icon="TOOL_SETTINGS")
                 row = layout.row(align=True)
                 for name, label in (("CAMERA", "相机"), ("FRONT", "正面"), ("SIDE", "侧面"), ("TOP", "顶面")):
                     row.operator("partme_blender.change_view", text=label).view = name
                 row = layout.row(align=True)
-                row.operator("partme_blender.play_work", icon="PLAY")
+                row.operator("partme_blender.play_work", text="播放 / 暂停动画", icon="PLAY")
                 row.prop(context.scene, "frame_current", text="帧")
                 for marker in sorted(context.scene.timeline_markers, key=lambda m: m.frame)[:12]:
                     if context.scene.frame_start <= marker.frame <= context.scene.frame_end:
@@ -164,10 +176,9 @@ class Frontend:
             def draw_approvals(layout):
                 """Trusted local approval surface for gated commands refused by the Harness."""
                 pending = runtime.session.pending_authorizations()
-                box = layout.box()
                 if not pending:
-                    box.label(text="无待批准操作", icon="CHECKMARK")
                     return
+                box = layout.box()
                 box.label(text=f"待批准操作 {len(pending)}", icon="LOCKED")
                 for entry in pending[:5]:
                     column = box.column(align=True)

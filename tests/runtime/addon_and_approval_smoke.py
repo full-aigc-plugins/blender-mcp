@@ -33,6 +33,20 @@ report["addonDiscovered"] = "partme_blender_mcp" in discovered
 bpy.ops.preferences.addon_enable(module="partme_blender_mcp")
 report["addonEnabled"] = "partme_blender_mcp" in bpy.context.preferences.addons
 report["addonPanelRegistered"] = hasattr(bpy.types, "VIEW3D_PT_partme_blender_mcp")
+report["providerPanelsRegistered"] = all(hasattr(bpy.types, name) for name in (
+    "VIEW3D_PT_partme_blender_permissions",
+    "VIEW3D_PT_partme_blender_assets",
+    "VIEW3D_PT_partme_blender_ai_models",
+))
+report["providerPanelsDefaultOpen"] = all(
+    "DEFAULT_CLOSED" not in getattr(getattr(bpy.types, name), "bl_options", frozenset())
+    for name in (
+        "VIEW3D_PT_partme_blender_permissions",
+        "VIEW3D_PT_partme_blender_assets",
+        "VIEW3D_PT_partme_blender_ai_models",
+    )
+)
+report["assetStrategyDefault"] = bpy.context.scene.partme_blender_asset_strategy
 
 from partme_blender_mcp import runtime as addon_runtime  # noqa: E402
 
@@ -137,7 +151,24 @@ report["commitFinal"] = commit("tx-final")
 report["allowedProbeExists"] = "Allowed" in bpy.data.objects
 report["blockedProbeAbsent"] = "Blocked" not in bpy.data.objects
 
-# 8. Orderly shutdown.
+# 8. Provider-neutral task progress and trusted local cancellation.
+from partme_blender_mcp.harness.provider_tasks import get_provider_task_registry  # noqa: E402
+
+provider_tasks = get_provider_task_registry()
+provider_tasks.update({
+    "operation": "start", "providerId": "hunyuan3d", "taskId": "smoke-task",
+    "state": "generating", "progress": 0.68, "stage": "正在轮询结果",
+    "cancelSupported": False,
+})
+cancel_result = bpy.ops.partme_blender.cancel_provider_task(
+    provider_id="hunyuan3d", task_id="smoke-task",
+)
+cancelled = provider_tasks.status("hunyuan3d", "smoke-task")
+report["providerCancelResult"] = list(cancel_result)
+report["providerCancelled"] = cancelled["state"] == "cancelled"
+report["providerRemoteMayContinue"] = cancelled["remoteMayContinue"]
+
+# 9. Orderly shutdown.
 frontend.unregister()
 report["sessionPanelUnregistered"] = not hasattr(bpy.types, "VIEW3D_PT_partme_blender_session")
 addon_runtime.stop()

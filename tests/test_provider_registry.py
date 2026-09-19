@@ -12,6 +12,7 @@ from partme_blender_mcp.harness.provider_registry import (
     ProviderRegistryError,
     register_native_providers,
 )
+from partme_blender_mcp.harness.provider_tasks import ProviderTaskRegistry
 
 
 class ProviderRegistryTests(unittest.TestCase):
@@ -70,6 +71,43 @@ class ProviderRegistryTests(unittest.TestCase):
                 risks=("read",), metadata={"apiKey": "must-not-leak"},
             )
 
+    def test_runtime_task_decorates_any_ai_provider_without_provider_specific_ui(self):
+        tasks = ProviderTaskRegistry()
+        registry = ProviderRegistry(task_registry=tasks)
+        registry.register(ProviderDefinition(
+            provider_id="future_model", label="Future Model", category="ai_model",
+            source="community", risks=("read", "paid_generation"), actions=("configure",),
+            status={"state": "ready", "statusText": "可用"},
+        ))
+
+        tasks.update({
+            "operation": "start", "providerId": "future_model", "taskId": "task-1",
+            "state": "generating", "progress": 0.68, "stage": "正在轮询结果",
+            "cancelSupported": False,
+        })
+
+        row = registry.snapshot()["providers"][0]
+        self.assertEqual(row["state"], "busy")
+        self.assertEqual(row["task"]["progress"], 0.68)
+        self.assertIn("cancel", row["actions"])
+        self.assertEqual(registry.snapshot()["summary"], {"ready": 0, "total": 1, "busy": 1})
+
+    def test_refresh_caches_status_probe_instead_of_probing_during_draw(self):
+        calls = []
+        registry = ProviderRegistry()
+        registry.register(ProviderDefinition(
+            provider_id="future_library", label="Future Library", category="asset_library",
+            source="community", risks=("read",),
+            status={"state": "unavailable", "statusText": "未检查"},
+            status_probe=lambda _context: calls.append("probe") or {"state": "ready", "statusText": "可用"},
+        ))
+
+        self.assertEqual(registry.snapshot()["providers"][0]["state"], "unavailable")
+        self.assertEqual(calls, [])
+        registry.refresh()
+        self.assertEqual(calls, ["probe"])
+        self.assertEqual(registry.snapshot()["providers"][0]["statusText"], "可用")
+
 
 class ProviderPanelContractTests(unittest.TestCase):
     def test_addon_exposes_generic_child_panels(self):
@@ -79,6 +117,21 @@ class ProviderPanelContractTests(unittest.TestCase):
         self.assertIn('bl_label = "AI 生成模型"', panel)
         self.assertGreaterEqual(panel.count('bl_parent_id = "VIEW3D_PT_partme_blender_mcp"'), 3)
         self.assertNotIn("blendermcp_use_polypizza", panel)
+
+    def test_finalized_ui_defaults_open_and_exposes_real_generic_task_controls(self):
+        root = Path(__file__).resolve().parents[1]
+        panel = (root / "addon/partme_blender_mcp/panel.py").read_text(encoding="utf-8")
+        frontend = (root / "src/partme_blender_mcp/harness/frontend.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("DEFAULT_CLOSED", panel)
+        self.assertIn("partme_blender_asset_strategy", panel)
+        self.assertIn("PARTMEBLENDER_OT_cancel_provider_task", panel)
+        self.assertIn("自动搜索与生成", panel)
+        self.assertIn("供应商能力", panel)
+        self.assertIn("layout.progress", panel)
+        for label in ("相机", "正面", "侧面", "顶面", "播放 / 暂停动画", "快捷操作"):
+            self.assertIn(label, frontend)
+        self.assertNotIn('box.label(text="无待批准操作"', frontend)
 
 
 if __name__ == "__main__":
