@@ -132,7 +132,7 @@ CLASSES = (PARTMEBLENDER_OT_start, PARTMEBLENDER_OT_revoke, PARTMEBLENDER_OT_app
 
 def register():
     bpy.types.Scene.partme_blender_execution_mode = bpy.props.EnumProperty(
-        name="Execution Mode", default="interactive",
+        name="Execution Mode", default="auto_with_budget",
         items=[("interactive", "Interactive", "Review milestones"),
                ("auto_with_budget", "Automatic local design", "Complete the authorized local task and export new files"),
                ("review_only", "Read only", "Inspect without changing scene content or exporting")],
