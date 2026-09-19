@@ -10,7 +10,7 @@
 
 ## Positioning
 
-PartMe Blender MCP translates standard MCP `stdio` requests into Blender operations guarded by closed schemas, transactions, scene revisions, path policy, local authorization, snapshots, and recovery. It is not a text-to-3D model and is not tied to one AI client.
+PartMe Blender MCP translates official MCP SDK connections (`stdio`, Streamable HTTP, or compatibility SSE) into Blender operations guarded by closed schemas, transactions, scene revisions, path policy, local authorization, snapshots, and recovery. It is not a text-to-3D model and is not tied to one AI client.
 
 ### Who it is for
 
@@ -31,8 +31,9 @@ PartMe Blender MCP translates standard MCP `stdio` requests into Blender operati
 ## At a glance
 
 ```text
-Codex / Claude / MiniMax Design / Cursor / Generic MCP
-                         │  MCP 2025-06-18 · stdio
+Local agents · LAN workstations · tablets · compatible MCP clients
+                         │  Official MCP SDK
+                         │  stdio / Streamable HTTP / SSE
                          ▼
 ┌────────────────────────────────────────────────────────┐
 │ PartMe Blender MCP                                     │
@@ -70,12 +71,13 @@ execution, snapshots, rollback, manual takeover, and verified exports.
 |:---|:---|
 | Product | PartMe Blender MCP |
 | MCP server ID | `partme_blender` |
-| Version | `0.4.0` release |
+| Version | `0.5.0` release |
 | MCP protocol | `2025-06-18` |
 | Harness compatibility | `codex-blender/v1` |
 | Blender | 4.2–5.2, only as verified per matrix |
 | Python | 3.11–3.13 |
-| Transport | stdio to macOS UDS / Windows Named Pipe |
+| Public transport | Official SDK stdio, Streamable HTTP, compatibility SSE |
+| Private Blender bridge | macOS UDS / Windows Named Pipe / loopback TCP fallback |
 | License | Apache-2.0 |
 
 ## Capabilities and boundaries
@@ -90,7 +92,7 @@ execution, snapshots, rollback, manual takeover, and verified exports.
 | Camera and rendering | Camera paths, handheld response, Eevee/Cycles, passes, compositor | Same |
 | Simulation and editors | Rigid body, cloth, soft body, smoke, Grease Pencil, tracking, VSE | Same |
 | Quality and delivery | Geometry/motion/camera checks, snapshots, jobs, multi-format export | Same |
-| MCP | initialize, paginated tools/list, tools/call, structuredContent | Automated tests |
+| MCP | official SDK initialize, paginated tools/list, tools/call, structuredContent; independent HTTP/SSE lifecycle | Automated transport contracts |
 
 ### Out of scope
 
@@ -108,11 +110,11 @@ Download Blender from the [official website](https://www.blender.org/download/) 
 
 ### 2. Download the release
 
-Download from [v0.4.0](https://github.com/full-aigc-plugins/blender-mcp/releases/tag/v0.4.0):
+Download from [v0.5.0](https://github.com/full-aigc-plugins/blender-mcp/releases/tag/v0.5.0):
 
 ```text
-partme-blender-mcp-addon-0.4.0.zip
-partme-blender-mcp-runtime-0.4.0.zip
+partme-blender-mcp-addon-0.5.0.zip
+partme-blender-mcp-runtime-0.5.0.zip
 SHA256SUMS.txt
 ```
 
@@ -125,7 +127,7 @@ For the simplest path, download the platform bundle, extract it, and run
 The platform bundles are also valid Python projects, so an accidental pip install now works.
 
 ```bash
-python -m pip install ./partme-blender-mcp-runtime-0.4.0.zip
+python -m pip install ./partme-blender-mcp-runtime-0.5.0.zip
 python -m partme_blender_mcp --help
 ```
 
@@ -133,7 +135,7 @@ python -m partme_blender_mcp --help
 
 1. Blender → **Edit → Preferences → Add-ons**.
 2. Top-right menu → **Install from Disk…**.
-3. Select `partme-blender-mcp-addon-0.4.0.zip` without extracting it.
+3. Select `partme-blender-mcp-addon-0.5.0.zip` without extracting it.
 4. Enable **PartMe Blender MCP**.
 5. Return to 3D View, press `N`, open **PartMe MCP**.
 6. Choose approved directories and click **Start MCP Server**.
@@ -165,6 +167,18 @@ python -m partme_blender_mcp --help
   }
 }
 ```
+
+For a remote workstation, configure Blender's **Access** tab or launch one listener explicitly. The token is passed through the environment and never appears in the process command line:
+
+```bash
+PARTME_BLENDER_REMOTE_TOKEN='<opaque-token>' \
+python -m partme_blender_mcp serve-remote streamable-http \
+  --host 0.0.0.0 --port 9877 \
+  --public-url https://studio.example/mcp \
+  --issuer-url https://auth.example/
+```
+
+Use `serve-remote sse --port 9878` only for legacy clients. Non-loopback listeners require a bearer token, an OAuth issuer, and an HTTPS public URL; HTTP and SSE have independent processes and switches.
 
 Start a new client conversation and call:
 
@@ -244,7 +258,7 @@ installs as one package from either archive. See [CONTRIBUTING.md](CONTRIBUTING.
 
 ## Compatibility and migration
 
-`0.4.0` is the current release. The Harness keeps `codex-blender/v1` temporarily for differential migration from `codex-blender-plugin`; all public identity, MCP server ID, and Add-on surfaces use PartMe. Untested clients remain `DOCUMENTED_NOT_RUN`.
+`0.5.0` is the current release. The Harness keeps `codex-blender/v1` temporarily for differential migration from `codex-blender-plugin`; all public identity, MCP server ID, and Add-on surfaces use PartMe. Untested clients remain `DOCUMENTED_NOT_RUN`.
 
 ## Deep documentation
 

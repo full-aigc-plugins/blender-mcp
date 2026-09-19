@@ -67,3 +67,11 @@ def on_file_loaded(_unused=None):
     """Revoke the old scene authorization whenever Blender loads another file."""
     if not getattr(_CURRENT, "executing", False):
         stop()
+    try:
+        from .panel import _apply_provider_preferences
+        import bpy
+        _apply_provider_preferences(bpy.context)
+    except Exception:
+        # Loading a file must never fail because an optional community Add-on
+        # or one of its provider properties is unavailable.
+        pass

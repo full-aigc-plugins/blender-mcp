@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-20
+
+### Added
+
+- One Blender-native workbench with Work, Assets, Models and Access tabs, real provider
+  switches, task progress/cancellation, directed settings and retained viewport shortcuts.
+- Official MCP Python SDK transports for stdio, Streamable HTTP and compatibility SSE,
+  with independent remote listener lifecycles and live client counts.
+- Guarded staging for generated GLB/GLTF/FBX/OBJ and ZIP results under approved asset
+  roots, including archive traversal, symlink, type, file-count and size checks.
+
+### Changed
+
+- Streamable HTTP and SSE share the exact stdio tool catalog, schemas, pagination and
+  result semantics instead of maintaining a second hand-written JSON-RPC server.
+- Community Sketchfab and Hyper3D downloads resolve locally and stage through PartMe;
+  direct community download/import commands remain outside the public MCP allowlist.
+
+### Security
+
+- Non-loopback listeners require bearer authentication, OAuth issuer metadata and an
+  HTTPS public URL; listener tokens are accepted only through the environment.
+- Signed provider URLs no longer appear in MCP receipts, UI state or copied endpoints.
+
 ## [0.4.0] - 2026-09-19
 
 ### Added
@@ -128,7 +152,8 @@ All notable changes to this project are documented here. The format follows
 - Cross-client guides (Codex, Claude Desktop, Claude Code, MiniMax Design, Cursor, generic
   MCP, macOS, Windows) with a documentation contract test.
 
-[Unreleased]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.2.0...v0.2.1

@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 
 
 class RepositoryStructureTests(unittest.TestCase):
@@ -58,26 +58,32 @@ class RuntimeContractTests(unittest.TestCase):
         init_text = (ROOT / "src/partme_blender_mcp/__init__.py").read_text(encoding="utf-8")
         self.assertIn("from .harness.version import", init_text, "public identity must re-export the single source")
 
+    @unittest.skipUnless(importlib.util.find_spec("mcp"), "official MCP SDK is not installed")
     def test_stdio_entrypoint_initializes_and_lists_single_underscore_tools(self):
-        request = "\n".join((
-            json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize",
-                        "params": {"protocolVersion": "2025-06-18", "capabilities": {},
-                                   "clientInfo": {"name": "release-test", "version": "1"}}}),
-            json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}),
-            json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}),
-            "",
-        ))
         env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
-        result = subprocess.run(
-            [sys.executable, "-m", "partme_blender_mcp"],
-            input=request, text=True, capture_output=True, env=env, cwd=ROOT,
+        process = subprocess.Popen(
+            [sys.executable, "-m", "partme_blender_mcp"], stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, cwd=ROOT,
         )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        rows = [json.loads(line) for line in result.stdout.splitlines()]
-        self.assertEqual(rows[0]["result"]["serverInfo"]["name"], "partme-blender-mcp")
-        names = [tool["name"] for tool in rows[1]["result"]["tools"]]
-        self.assertIn("blender_connection_status", names)
-        self.assertFalse(any("__" in name for name in names))
+        try:
+            process.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                                "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                                           "clientInfo": {"name": "release-test", "version": "1"}}}) + "\n")
+            process.stdin.flush()
+            initialized = json.loads(process.stdout.readline())
+            self.assertEqual(initialized["result"]["serverInfo"]["name"], "partme-blender-mcp")
+            process.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
+            process.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}) + "\n")
+            process.stdin.flush()
+            listing = json.loads(process.stdout.readline())
+            names = [tool["name"] for tool in listing["result"]["tools"]]
+            self.assertIn("blender_connection_status", names)
+            self.assertFalse(any("__" in name for name in names))
+        finally:
+            process.stdin.close()
+            self.assertEqual(process.wait(timeout=10), 0, process.stderr.read())
+            process.stdout.close()
+            process.stderr.close()
 
     def test_public_catalog_is_vendor_neutral_and_complete(self):
         sys.path.insert(0, str(ROOT / "src"))

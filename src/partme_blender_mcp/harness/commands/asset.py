@@ -13,6 +13,16 @@ class AssetCommands:
         if self.policy is None: raise HarnessError('ASSET_NOT_AUTHORIZED','no asset root was approved')
         return self.policy.require_file(value)
 
+    @staticmethod
+    def _require_provider(provider_id):
+        from ..provider_registry import ProviderRegistryError, get_provider_registry
+        try:
+            get_provider_registry().require_enabled(provider_id)
+        except ProviderRegistryError as exc:
+            code = ('PROVIDER_CONFIGURATION_REQUIRED' if 'requires configuration' in str(exc) else
+                    'PROVIDER_UNAVAILABLE' if 'unavailable' in str(exc) else 'PROVIDER_DISABLED')
+            raise HarnessError(code, str(exc)) from exc
+
     def import_file(self, arguments):
         path=self._path(arguments.get('path')); suffix=path.suffix.lower()
         before=set(self.bpy.data.objects)
@@ -65,7 +75,8 @@ class AssetCommands:
     FETCH_ALLOWED_HOSTS=frozenset({'api.polyhaven.com','dl.polyhaven.org'})
     FETCH_ALLOWED_SUFFIXES=frozenset({'.hdr','.exr','.glb','.gltf','.png','.jpg','.jpeg'})
     FETCH_MAX_BYTES=200*1024*1024
-    GENERATED_ALLOWED_SUFFIXES=frozenset({'.glb','.gltf','.fbx','.obj'})
+    GENERATED_ALLOWED_SUFFIXES=frozenset({'.glb','.gltf','.fbx','.obj','.zip'})
+    GENERATED_ARCHIVE_SUFFIXES=frozenset({'.glb','.gltf','.fbx','.obj','.bin','.png','.jpg','.jpeg','.webp','.ktx2'})
     GENERATED_MAX_BYTES=500*1024*1024
     POLYPIZZA_API_BASE='https://api.poly.pizza/v1.1'
     POLYPIZZA_MAX_BYTES=100*1024*1024
@@ -91,6 +102,7 @@ class AssetCommands:
     def polypizza_search(self,arguments):
         """Search Poly Pizza without modifying the scene."""
         from urllib.parse import quote
+        self._require_provider('polypizza')
         query=arguments.get('query')
         licence=arguments.get('licence')
         if licence not in (None,'','CC0','CC-BY'):
@@ -118,6 +130,7 @@ class AssetCommands:
         import json
         import urllib.request
         from urllib.parse import quote,urlparse
+        self._require_provider('polypizza')
         model_id=arguments.get('modelId')
         if not isinstance(model_id,str) or not model_id.strip():
             raise HarnessError('INVALID_ARGUMENT','modelId is required')
@@ -167,6 +180,7 @@ class AssetCommands:
         """Download from an allowlisted host into an approved asset root."""
         import urllib.request
         from urllib.parse import urlparse
+        self._require_provider('polyhaven')
         url=arguments.get('url')
         if not isinstance(url,str) or not url:
             raise HarnessError('INVALID_ARGUMENT','url is required')
@@ -222,16 +236,19 @@ class AssetCommands:
             raise HarnessError('INVALID_ARGUMENT','url is required')
         if not isinstance(provider_id,str) or not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,63}',provider_id):
             raise HarnessError('INVALID_ARGUMENT','providerId must be a stable lowercase identifier')
+        self._require_provider(provider_id)
         parsed=urlparse(url)
         if parsed.scheme!='https' or not parsed.hostname:
             raise HarnessError('INVALID_ARGUMENT','generated asset url must use https')
-        suffix=Path(parsed.path).suffix.lower()
+        requested_filename=arguments.get('filename')
+        requested_filename=(str(requested_filename) if isinstance(requested_filename,str)
+                            and requested_filename.strip() else Path(parsed.path).name)
+        suffix=(Path(requested_filename).suffix or Path(parsed.path).suffix).lower()
         if suffix not in self.GENERATED_ALLOWED_SUFFIXES:
-            raise HarnessError('INVALID_ARGUMENT','generated asset must be GLB/GLTF, FBX or OBJ')
+            raise HarnessError('INVALID_ARGUMENT','generated asset must be GLB/GLTF, FBX, OBJ or ZIP')
         if self.policy is None:
             raise HarnessError('ASSET_NOT_AUTHORIZED','no asset root was approved')
-        filename=arguments.get('filename')
-        filename=str(filename) if isinstance(filename,str) and filename.strip() else Path(parsed.path).name
+        filename=requested_filename
         if '/' in filename or '\\' in filename or '..' in filename:
             raise HarnessError('INVALID_ARGUMENT','filename must be a plain name')
         if not filename.lower().endswith(suffix): filename+=suffix
@@ -262,5 +279,43 @@ class AssetCommands:
             partial.unlink(missing_ok=True)
             raise HarnessError('DOWNLOAD_FAILED',f'generated asset download did not finish: {parsed.hostname}') from exc
         partial.replace(target)
-        return {'changedObjects':[],'result':{'path':str(target),'bytes':downloaded,
-                                              'providerId':provider_id,'sourceUrl':url}}
+        result_path=target
+        extracted=[]
+        if suffix=='.zip':
+            import stat
+            import zipfile
+            destination=subdir/target.stem
+            destination.mkdir(parents=True,exist_ok=True)
+            total_uncompressed=0
+            try:
+                with zipfile.ZipFile(target) as archive:
+                    entries=archive.infolist()
+                    if len(entries)>4096:
+                        raise HarnessError('INVALID_ARGUMENT','generated archive contains too many files')
+                    for entry in entries:
+                        relative=Path(entry.filename)
+                        if relative.is_absolute() or '..' in relative.parts:
+                            raise HarnessError('ASSET_NOT_AUTHORIZED','generated archive contains an unsafe path')
+                        if stat.S_ISLNK(entry.external_attr >> 16):
+                            raise HarnessError('ASSET_NOT_AUTHORIZED','generated archive contains a symbolic link')
+                        if entry.is_dir():
+                            continue
+                        if relative.suffix.lower() not in self.GENERATED_ARCHIVE_SUFFIXES:
+                            raise HarnessError('INVALID_ARGUMENT',f'generated archive contains an unsupported file: {relative.name}')
+                        total_uncompressed+=entry.file_size
+                        if total_uncompressed>self.GENERATED_MAX_BYTES:
+                            raise HarnessError('INVALID_ARGUMENT','generated archive expands beyond the 500MB cap')
+                    archive.extractall(destination)
+                    extracted=[str(destination/entry.filename) for entry in entries if not entry.is_dir()]
+            except HarnessError:
+                raise
+            except (OSError,zipfile.BadZipFile) as exc:
+                raise HarnessError('INVALID_ARGUMENT','generated archive is not a valid ZIP') from exc
+            candidates=sorted(Path(path) for path in extracted
+                              if Path(path).suffix.lower() in {'.glb','.gltf','.fbx','.obj'})
+            if not candidates:
+                raise HarnessError('INVALID_ARGUMENT','generated archive does not contain an importable model')
+            result_path=candidates[0]
+        return {'changedObjects':[],'result':{'path':str(result_path),'archivePath':str(target) if suffix=='.zip' else None,
+                                              'bytes':downloaded,'providerId':provider_id,
+                                              'sourceHost':parsed.hostname,'extractedFiles':len(extracted)}}

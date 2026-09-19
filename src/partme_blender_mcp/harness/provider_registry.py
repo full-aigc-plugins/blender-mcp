@@ -47,6 +47,9 @@ class ProviderDefinition:
     status: dict = field(default_factory=lambda: {"state": "unavailable", "statusText": "不可用"})
     actions: tuple[str, ...] = ()
     metadata: dict = field(default_factory=dict)
+    enabled: bool = True
+    mutable: bool = True
+    configurable: bool = False
     status_probe: Callable[[object | None], dict] | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self):
@@ -62,6 +65,8 @@ class ProviderDefinition:
             raise ProviderRegistryError("provider risks are empty or invalid")
         if self.status.get("state") not in VALID_STATES:
             raise ProviderRegistryError("provider status state is invalid")
+        if type(self.enabled) is not bool or type(self.mutable) is not bool or type(self.configurable) is not bool:
+            raise ProviderRegistryError("provider enabled, mutable and configurable flags must be booleans")
         if _contains_secret(self.metadata):
             raise ProviderRegistryError("provider metadata must not contain credentials")
 
@@ -70,11 +75,13 @@ class ProviderRegistry:
     def __init__(self, *, task_registry: ProviderTaskRegistry | None = None):
         self._providers: dict[str, ProviderDefinition] = {}
         self._status_overrides: dict[str, dict] = {}
+        self._enabled_overrides: dict[str, bool] = {}
         self._task_registry = task_registry or get_provider_task_registry()
 
     def clear(self) -> None:
         self._providers.clear()
         self._status_overrides.clear()
+        self._enabled_overrides.clear()
 
     def register(self, definition: ProviderDefinition) -> None:
         if definition.provider_id in self._providers:
@@ -86,7 +93,10 @@ class ProviderRegistry:
         if payload.get("schemaVersion") != PROVIDER_CATALOG_SCHEMA or not isinstance(payload.get("providers"), list):
             raise ProviderRegistryError("provider catalog schema is invalid")
         for item in payload["providers"]:
-            allowed = {"providerId", "label", "category", "source", "risks", "status", "actions", "metadata"}
+            allowed = {
+                "providerId", "label", "category", "source", "risks", "status", "actions", "metadata",
+                "enabled", "mutable", "configurable",
+            }
             if not isinstance(item, dict) or set(item) - allowed:
                 raise ProviderRegistryError("provider contribution contains unknown fields")
             metadata = dict(item.get("metadata") or {})
@@ -102,28 +112,60 @@ class ProviderRegistry:
                 status=dict(item.get("status") or {"state": "unavailable", "statusText": "不可用"}),
                 actions=tuple(item.get("actions", ())),
                 metadata=metadata,
+                enabled=item.get("enabled", True),
+                mutable=item.get("mutable", True),
+                configurable=item.get("configurable", "configure" in item.get("actions", ())),
                 status_probe=status_probe,
             ))
+
+    def _enabled(self, definition: ProviderDefinition, context=None) -> bool:
+        override = self._enabled_overrides.get(definition.provider_id)
+        if override is not None:
+            return override
+        property_name = definition.metadata.get("enableProperty")
+        scene = getattr(context, "scene", None)
+        if isinstance(property_name, str) and scene is not None and hasattr(scene, property_name):
+            return bool(getattr(scene, property_name))
+        return definition.enabled
+
+    def _base_status(self, definition: ProviderDefinition) -> dict:
+        status = dict(definition.status)
+        status.update(self._status_overrides.get(definition.provider_id, {}))
+        if status.get("state") not in VALID_STATES:
+            return {"state": "error", "statusText": "状态协议错误"}
+        return status
 
     def snapshot(self, context=None) -> dict:
         rows = []
         for definition in self._providers.values():
-            status = dict(definition.status)
-            status.update(self._status_overrides.get(definition.provider_id, {}))
-            if status.get("state") not in VALID_STATES:
-                status = {"state": "error", "statusText": "状态协议错误"}
+            status = self._base_status(definition)
+            enabled = self._enabled(definition, context)
             actions = list(definition.actions)
             task = self._task_registry.latest(definition.provider_id)
-            if task is not None and task["active"]:
+            active = task is not None and task["active"]
+            if active:
                 status = {"state": "busy", "statusText": task.get("statusText") or task.get("stage") or "处理中"}
                 if "cancel" not in actions:
                     actions.append("cancel")
+            elif not enabled and status["state"] != "configuration_required":
+                status = {"state": "disabled", "statusText": "已关闭"}
             row = {
                 "schemaVersion": PROVIDER_STATUS_SCHEMA,
                 "providerId": definition.provider_id,
                 "label": definition.label,
                 "category": definition.category,
                 "source": definition.source,
+                "enabled": enabled,
+                "defaultEnabled": definition.enabled,
+                "mutable": definition.mutable,
+                "configurable": definition.configurable,
+                # A temporary provider outage must not erase or prevent the user's
+                # routing preference. Missing required configuration is different: the
+                # configuration action must succeed before a disabled provider can start.
+                "toggleLocked": (
+                    not definition.mutable or active or
+                    (not enabled and status["state"] == "configuration_required")
+                ),
                 "state": status["state"],
                 "statusText": str(status.get("statusText") or status["state"]),
                 "risks": list(definition.risks),
@@ -137,9 +179,10 @@ class ProviderRegistry:
             "schemaVersion": PROVIDER_STATUS_SCHEMA,
             "providers": rows,
             "summary": {
-                "ready": sum(row["state"] == "ready" for row in rows),
+                "ready": sum(row["enabled"] and row["state"] == "ready" for row in rows),
                 "total": len(rows),
-                "busy": sum(row["state"] == "busy" for row in rows),
+                "busy": sum(row["enabled"] and row["state"] == "busy" for row in rows),
+                "available": sum(row["enabled"] and row["state"] in {"ready", "busy"} for row in rows),
             },
         }
 
@@ -165,6 +208,41 @@ class ProviderRegistry:
         if not isinstance(status, dict) or status.get("state") not in VALID_STATES:
             raise ProviderRegistryError("provider status state is invalid")
         self._status_overrides[provider_id] = dict(status)
+
+    def set_enabled(self, provider_id: str, enabled: bool, *, context=None) -> dict:
+        if type(enabled) is not bool:
+            raise ProviderRegistryError("provider enabled value must be boolean")
+        definition = self._providers.get(provider_id)
+        if definition is None:
+            raise ProviderRegistryError(f"unknown provider: {provider_id}")
+        if not definition.mutable:
+            raise ProviderRegistryError(f"provider cannot be disabled: {provider_id}")
+        task = self._task_registry.latest(provider_id, active_only=True)
+        if task is not None:
+            raise ProviderRegistryError(f"provider has an active task: {provider_id}")
+        if enabled and self._base_status(definition)["state"] == "configuration_required":
+            raise ProviderRegistryError(f"provider requires configuration: {provider_id}")
+        property_name = definition.metadata.get("enableProperty")
+        if isinstance(property_name, str):
+            scene = getattr(context, "scene", None)
+            if scene is None or not hasattr(scene, property_name):
+                raise ProviderRegistryError(f"provider runtime property is unavailable: {provider_id}")
+            setattr(scene, property_name, enabled)
+        self._enabled_overrides[provider_id] = enabled
+        return next(row for row in self.snapshot(context)["providers"] if row["providerId"] == provider_id)
+
+    def require_enabled(self, provider_id: str, *, context=None) -> None:
+        """Reject routing to a registered provider that the user disabled or cannot configure."""
+        definition = self._providers.get(provider_id)
+        if definition is None:
+            return
+        if not self._enabled(definition, context):
+            raise ProviderRegistryError(f"provider is disabled: {provider_id}")
+        status = self._base_status(definition)
+        if status["state"] == "configuration_required":
+            raise ProviderRegistryError(f"provider requires configuration: {provider_id}")
+        if status["state"] in {"unavailable", "error"}:
+            raise ProviderRegistryError(f"provider is unavailable: {provider_id}")
 
 
 def _asset_root_status(context) -> dict:
@@ -221,12 +299,12 @@ def _community_status_probe(command: str):
 def register_native_providers(registry: ProviderRegistry) -> None:
     registry.register(ProviderDefinition(
         provider_id="local_library", label="本地素材库", category="asset_library", source="native",
-        risks=("read", "scene_import"), status_probe=_asset_root_status,
+        risks=("read", "scene_import"), mutable=False, status_probe=_asset_root_status,
     ))
     registry.register(ProviderDefinition(
         provider_id="polypizza", label="Poly Pizza", category="asset_library", source="native",
         risks=("read", "network_download", "scene_import"), actions=("configure",),
-        status_probe=_polypizza_status,
+        enabled=False, configurable=True, status_probe=_polypizza_status,
     ))
 
 

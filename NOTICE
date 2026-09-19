@@ -3,5 +3,6 @@ Copyright 2026 PartMe.AI contributors
 
 This product includes software developed by PartMe.AI contributors.
 
-The Blender Add-on and stdio MCP Runtime package the same Apache-2.0 Harness source shipped in this
-repository. No third-party DCC application, uploader, model service, or binary runtime is redistributed.
+The Blender Add-on and MCP Runtime package the same Apache-2.0 Harness source shipped in this
+repository. Public MCP transports use the separately installed official MCP Python SDK (MIT).
+No third-party DCC application, uploader, model service, or binary runtime is redistributed.

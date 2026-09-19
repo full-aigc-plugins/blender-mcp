@@ -913,6 +913,7 @@ class BlenderMCPServer:
             polyhaven_handlers = {
                 "create_rodin_job": self.create_rodin_job,
                 "poll_rodin_job_status": self.poll_rodin_job_status,
+                "resolve_rodin_asset": self.resolve_rodin_asset,
                 "import_generated_asset": self.import_generated_asset,
             }
             handlers.update(polyhaven_handlers)
@@ -922,6 +923,7 @@ class BlenderMCPServer:
             sketchfab_handlers = {
                 "search_sketchfab_models": self.search_sketchfab_models,
                 "get_sketchfab_model_preview": self.get_sketchfab_model_preview,
+                "resolve_sketchfab_download": self.resolve_sketchfab_download,
                 "download_sketchfab_model": self.download_sketchfab_model,
             }
             handlers.update(sketchfab_handlers)
@@ -2860,6 +2862,42 @@ class BlenderMCPServer:
             case _:
                 return f"Error: Unknown Hyper3D Rodin mode!"
 
+    def resolve_rodin_asset(self, task_uuid=None, request_id=None, **_kwargs):
+        """Return a short-lived result URL without downloading or mutating the scene."""
+        api_key = self._get_hyper3d_api_key()
+        if not api_key:
+            return {"error": "Hyper3D API key is not given"}
+        mode = bpy.context.scene.blendermcp_hyper3d_mode
+        if mode == "MAIN_SITE":
+            if not task_uuid:
+                return {"error": "task_uuid is required"}
+            response = requests.post(
+                "https://hyperhuman.deemos.com/api/v2/download",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={"task_uuid": task_uuid},
+                timeout=30,
+            )
+            response.raise_for_status()
+            candidates = response.json().get("list", [])
+            item = next((entry for entry in candidates if str(entry.get("name", "")).endswith(".glb")), None)
+            if not item or not item.get("url"):
+                return {"error": "No generated GLB is available yet"}
+            return {"providerId": "hyper3d", "url": item["url"], "filename": item.get("name") or f"{task_uuid}.glb"}
+        if mode == "FAL_AI":
+            if not request_id:
+                return {"error": "request_id is required"}
+            response = requests.get(
+                f"https://queue.fal.run/fal-ai/hyper3d/requests/{request_id}",
+                headers={"Authorization": f"Key {api_key}"},
+                timeout=30,
+            )
+            response.raise_for_status()
+            url = response.json().get("model_mesh", {}).get("url")
+            if not url:
+                return {"error": "No generated GLB is available yet"}
+            return {"providerId": "hyper3d", "url": url, "filename": f"{request_id}.glb"}
+        return {"error": "Unknown Hyper3D Rodin mode"}
+
     def import_generated_asset_main_site(self, task_uuid: str, name: str):
         """Fetch the generated asset, import into blender"""
         api_key = self._get_hyper3d_api_key()
@@ -3201,6 +3239,31 @@ class BlenderMCPServer:
             import traceback
             traceback.print_exc()
             return {"error": f"Failed to get model preview: {str(e)}"}
+
+    def resolve_sketchfab_download(self, uid):
+        """Resolve a downloadable archive without writing files or changing the scene."""
+        api_key = self._get_sketchfab_api_key()
+        if not api_key:
+            return {"error": "Sketchfab API key is not configured"}
+        if not isinstance(uid, str) or not re.fullmatch(r"[A-Za-z0-9_-]{3,128}", uid):
+            return {"error": "Sketchfab model uid is invalid"}
+        response = requests.get(
+            f"https://api.sketchfab.com/v3/models/{uid}/download",
+            headers={"Authorization": f"Token {api_key}"},
+            timeout=30,
+        )
+        if response.status_code == 401:
+            return {"error": "Authentication failed (401). Check your API key."}
+        if response.status_code != 200:
+            return {"error": f"Download request failed with status code {response.status_code}"}
+        gltf = (response.json() or {}).get("gltf") or {}
+        if not gltf.get("url"):
+            return {"error": "No glTF download is available for this model"}
+        return {
+            "providerId": "sketchfab",
+            "url": gltf["url"],
+            "filename": f"{uid}.zip",
+        }
 
     def download_sketchfab_model(self, uid, normalize_size=False, target_size=1.0):
         """Download a model from Sketchfab by its UID

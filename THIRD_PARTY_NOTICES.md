@@ -6,6 +6,12 @@ software remain the property of their respective owners.
 This repository does not redistribute Blender, ffmpeg, a vendor uploader, or another product's
 private runtime. Users install Blender separately from its official distribution.
 
+## Model Context Protocol Python SDK
+
+The public stdio, Streamable HTTP, and compatibility SSE transports depend on the official
+`mcp` Python package from https://github.com/modelcontextprotocol/python-sdk, version `>=2.2.0,<3`.
+It is installed by the Python package manager and is licensed under the MIT License.
+
 ## blender_mcp_community (vendored community Add-on)
 
 `vendor/community/blender_mcp_community/__init__.py` is a verbatim copy of `addon.py` from

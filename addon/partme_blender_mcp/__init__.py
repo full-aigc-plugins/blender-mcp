@@ -5,7 +5,7 @@ bl_info = {
     "author": "PartMe.AI",
     # Blender's Add-on discovery parses bl_info with ast.literal_eval; keep this
     # literal and enforce equality with harness.version in the release tests.
-    "version": (0, 4, 0),
+    "version": (0, 5, 0),
     "blender": (4, 2, 0),
     "location": "3D View > Sidebar > PartMe MCP",
     "description": "Expose Blender through the guarded PartMe MCP Harness",

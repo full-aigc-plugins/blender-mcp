@@ -17,10 +17,6 @@ from .transport import Endpoint, send_request
 from .version import (
     BLENDER_DOWNLOAD_URL,
     HARNESS_PROTOCOL_VERSION,
-    MCP_PROTOCOL_VERSION,
-    MCP_SERVER_NAME,
-    PRODUCT_NAME,
-    __version__,
 )
 ENVELOPE_PROPERTIES = {
     "_requestId": {"type": "string", "minLength": 1, "description": "Stable request id for replay safety"},
@@ -382,71 +378,13 @@ class McpAdapter:
         return self._result(response, is_error=failed)
 
 
-def _jsonrpc_error(request_id, code: int, message: str) -> dict:
-    return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
-
-
 def serve_stdio(input_stream=None, output_stream=None, adapter: McpAdapter | None = None) -> int:
-    input_stream = input_stream or sys.stdin
-    output_stream = output_stream or sys.stdout
-    adapter = adapter or McpAdapter()
-    for raw in input_stream:
-        try:
-            request = json.loads(raw)
-            if not isinstance(request, dict):
-                raise ValueError("request must be an object")
-            request_id = request.get("id")
-            method = request.get("method")
-            if method == "notifications/initialized":
-                continue
-            if method == "initialize":
-                params = request.get("params") if isinstance(request.get("params"), dict) else {}
-                adapter.record_client(params.get("clientInfo"))
-                result = {
-                    "protocolVersion": MCP_PROTOCOL_VERSION,
-                    "capabilities": {"tools": {"listChanged": False}},
-                    "serverInfo": {"name": MCP_SERVER_NAME, "title": PRODUCT_NAME, "version": __version__},
-                }
-            elif method == "ping":
-                result = {}
-            elif method == "tools/list":
-                params = request.get("params") or {}
-                if not isinstance(params, dict) or set(params).difference({"cursor"}):
-                    raise McpAdapterError("INVALID_CURSOR", "invalid tools/list parameters")
-                try:
-                    result = adapter.list_tools(cursor=params.get("cursor"))
-                except McpAdapterError:
-                    response = _jsonrpc_error(request_id, -32602, "invalid tools/list cursor")
-                    output_stream.write(json.dumps(response, separators=(",", ":")) + "\n")
-                    output_stream.flush()
-                    continue
-            elif method == "tools/call":
-                params = request.get("params")
-                if not isinstance(params, dict) or not isinstance(params.get("name"), str):
-                    response = _jsonrpc_error(request_id, -32602, "invalid tools/call parameters")
-                    output_stream.write(json.dumps(response, separators=(",", ":")) + "\n")
-                    output_stream.flush()
-                    continue
-                result = adapter.call_tool(params["name"], params.get("arguments", {}))
-            else:
-                response = _jsonrpc_error(request_id, -32601, "method not found")
-                output_stream.write(json.dumps(response, separators=(",", ":")) + "\n")
-                output_stream.flush()
-                continue
-            if request_id is not None:
-                output_stream.write(json.dumps({"jsonrpc": "2.0", "id": request_id, "result": result},
-                                               separators=(",", ":"), ensure_ascii=False) + "\n")
-                output_stream.flush()
-        except McpAdapterError:
-            output_stream.write(json.dumps(_jsonrpc_error(None, -32602, "invalid parameters"), separators=(",", ":")) + "\n")
-            output_stream.flush()
-        except (json.JSONDecodeError, ValueError):
-            output_stream.write(json.dumps(_jsonrpc_error(None, -32700, "parse error"), separators=(",", ":")) + "\n")
-            output_stream.flush()
-        except Exception:
-            output_stream.write(json.dumps(_jsonrpc_error(None, -32603, "internal error"), separators=(",", ":")) + "\n")
-            output_stream.flush()
-    return 0
+    """Compatibility entry point backed exclusively by the official MCP SDK."""
+    if input_stream is not None or output_stream is not None:
+        raise ValueError("custom stdio streams are not supported by the official MCP SDK runner")
+    from .sdk_server import serve_stdio as serve_sdk_stdio
+
+    return serve_sdk_stdio(adapter or McpAdapter())
 
 
 def main() -> int:

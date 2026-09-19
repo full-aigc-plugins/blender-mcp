@@ -1,7 +1,7 @@
 # PartMe Blender MCP 供应商整合设计
 
 > 状态：已确认实施  
-> 目标版本：`blender-mcp 0.4.0` / `blender-design 0.10.0`
+> 目标版本：`blender-mcp 0.5.0` / `blender-design 0.10.0`
 > 前置基线：已发布的 `blender-mcp 0.2.1` 不覆盖、不重传同名资产
 
 ## 1. 目标
@@ -57,6 +57,10 @@ flowchart TB
   "providerId": "sketchfab",
   "category": "asset_library",
   "source": "community",
+  "enabled": false,
+  "mutable": true,
+  "configurable": true,
+  "toggleLocked": true,
   "state": "configuration_required",
   "label": "Sketchfab",
   "statusText": "需要配置",
@@ -89,21 +93,24 @@ flowchart TB
 
 注册表拒绝重复 ID、未知类别/状态/风险和包含 `apiKey`、`token`、`secret`、`password` 的公开元数据。
 
+`enabled`是用户偏好，`state`是运行事实，两者必须独立。只有`enabled = true`且状态为`ready`或`busy`的供应商计入
+`供应商可用`并进入自动路由。本地素材库固定启用；外部供应商可以启停。配置缺失时开关禁用，任务运行时开关锁定，
+用户必须通过独立的终止动作结束任务。供应商启用偏好保存在 Blender 用户配置中，不写入`.blend`；社区供应商同时把
+偏好同步到其真实`blendermcp_use_*`运行属性。临时离线或状态探测错误不得清除用户偏好；开关可以保持启用，但调用仍由
+路由门禁以`PROVIDER_UNAVAILABLE`拒绝，待供应商恢复后自动重新进入候选集。
+
 ## 5. UI
 
 视觉与交互定稿见：[PartMe Blender MCP 侧栏界面设计 V1](../../design/partme-blender-mcp-sidebar-ui-v1.md)。
 
-在 `PartMe MCP` 页签下保留一个连接权威，并增加三个子面板：
-
-1. `权限与执行`：授权目录、执行模式、替身策略；
-2. `资产与素材库`：本地素材库、Poly Haven、Sketchfab、Poly Pizza；
-3. `AI 生成模型`：Hyper3D Rodin、腾讯混元 3D。
+在 `PartMe MCP` 页签下只注册一个工作台面板。顶部显示服务状态、场景版本、供应商可用数和刷新/执行设置；内容通过
+`制作`、`素材`、`模型`、`接入`四个原生 Tab 切换，默认显示`制作`。旧权限、素材、模型、制作过程子面板不再并排注册。
 
 供应商行显示图标、名称、文字状态和必要动作；不得只用颜色或复选框表达状态。`PartMe 制作过程`
 继续显示实时任务、审批、接管、撤销、视图与播放控制。
 
-`权限与执行`、`资产与素材库`、`AI 生成模型`、`PartMe 制作过程`首次显示时全部默认展开；
-用户手动折叠后可遵循 Blender 的界面状态记忆。原有相机、正面、侧面、顶面、播放/暂停和帧定位快捷操作必须保留。
+供应商行显示图标、名称、文字状态、必要动作和真实启用开关。本地素材库显示`始终启用`。配置按钮必须打开对应供应商
+设置；不得仅报告环境变量或打开无定位的空白偏好页。原有相机、正面、侧面、顶面、播放/暂停和帧定位快捷操作必须保留。
 
 ## 6. Poly Pizza 单路径
 
@@ -131,7 +138,7 @@ flowchart TB
 ## 8. 版本与兼容
 
 - `v0.2.1` 已发布，先记录其版本漂移基线，不修改远端资产；
-- 本增量使用 `blender-mcp 0.4.0`；
+- 本增量使用 `blender-mcp 0.5.0`；
 - 插件使用 `blender-design 0.10.0`，锁定新的 runtime/add-on/community SHA；
 - 旧 `blender_community_call` 保留一个版本，但对已移除的 Poly Pizza 和直接导入命令返回结构化迁移错误；
 - `scripts/harness/` 暂不删除，建立带 SHA 的差分门禁并声明只读兼容边界。
@@ -139,8 +146,10 @@ flowchart TB
 ## 9. 验收
 
 - 供应商注册表与状态协议单元测试通过；
-- 两个通用子面板存在，窄宽度下不依赖横向布局；
-- 所有主要区块首次显示时默认展开，原有视图与播放快捷操作保留；
+- 单工作台四 Tab 在窄宽度下不截断关键状态，默认显示制作；
+- 外部供应商开关真实控制社区 handler/PartMe 原生命令路由，配置缺失和 busy 状态不可误切；
+- 配置入口定向打开对应 Add-on Preferences，密钥不进入 Scene、状态、日志或回执；
+- 原有视图与播放快捷操作保留；
 - 自动生成在已授权预算内不中断制作，并提供语义准确的终止操作；
 - Poly Pizza 公共路径只有 PartMe 原生命令；
 - 插件扩展工具跨页只出现一次；

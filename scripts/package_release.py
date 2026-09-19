@@ -200,6 +200,19 @@ def build(output: Path) -> list[Path]:
             "licenseConcluded": "Apache-2.0",
             "licenseDeclared": "Apache-2.0",
             "filesAnalyzed": False,
+        }, {
+            "name": "mcp",
+            "SPDXID": "SPDXRef-MCP-Python-SDK",
+            "versionInfo": ">=2.2.0,<3",
+            "downloadLocation": "https://pypi.org/project/mcp/",
+            "licenseConcluded": "MIT",
+            "licenseDeclared": "MIT",
+            "filesAnalyzed": False,
+        }],
+        "relationships": [{
+            "spdxElementId": "SPDXRef-Package",
+            "relationshipType": "DEPENDS_ON",
+            "relatedSpdxElement": "SPDXRef-MCP-Python-SDK",
         }],
     }
     sbom_path = output / "SBOM.spdx.json"

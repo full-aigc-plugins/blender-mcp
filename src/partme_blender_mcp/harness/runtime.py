@@ -48,6 +48,7 @@ from .runtime_catalog import RuntimeCommandRegistry
 from .session import HarnessSession
 from .execution_policy import ExecutionMode, ExecutionPolicy
 from .provider_tasks import ProviderTaskError, get_provider_task_registry
+from .provider_registry import ProviderRegistryError, get_provider_registry
 
 
 def build_registry(bpy_module, *, runtime_mode: str = "managed", approved_output_root: Path | None = None, approved_asset_roots=(), revision_provider=lambda: 0) -> CommandRegistry:
@@ -107,6 +108,18 @@ def build_registry(bpy_module, *, runtime_mode: str = "managed", approved_output
         except ProviderTaskError as exc:
             raise HarnessError("INVALID_ARGUMENT", str(exc)) from exc
         return {"changedObjects": [], "result": result}
+
+    def provider_external_action(arguments):
+        try:
+            get_provider_registry().require_enabled(arguments["providerId"], context=getattr(bpy_module, "context", None))
+        except ProviderRegistryError as exc:
+            code = ("PROVIDER_CONFIGURATION_REQUIRED" if "requires configuration" in str(exc) else
+                    "PROVIDER_UNAVAILABLE" if "unavailable" in str(exc) else "PROVIDER_DISABLED")
+            raise HarnessError(code, str(exc)) from exc
+        return {"changedObjects": [], "result": {
+            "providerId": arguments["providerId"], "action": arguments["action"],
+            "risk": arguments["risk"], "approved": True,
+        }}
 
     registry = RuntimeCommandRegistry(bpy_module, output_root=approved_output_root, asset_roots=approved_asset_roots)
     registry.register('capability.list',
@@ -242,9 +255,7 @@ def build_registry(bpy_module, *, runtime_mode: str = "managed", approved_output
                                     'statusText', 'message', 'cancelSupported')),
                       risk='read')
     registry.register('provider.external_action',
-                      lambda arguments: {'changedObjects': [], 'result': {
-                          'providerId': arguments['providerId'], 'action': arguments['action'],
-                          'risk': arguments['risk'], 'approved': True}},
+                      provider_external_action,
                       validate=closed_arguments(required=('providerId','action','risk')), risk='gated')
     registry.register('uv.mark_seams',uvs.mark_seams,
                       validate=closed_arguments(required=('selection',),optional=('seam',)))

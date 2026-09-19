@@ -127,72 +127,9 @@ class Frontend:
                 view.set_frame({"frame": self.frame})
                 return {"FINISHED"}
 
-        class VIEW3D_PT_partme_blender_session(bpy.types.Panel):
-            bl_idname = "VIEW3D_PT_partme_blender_session"
-            bl_label = "PartMe 制作过程"
-            bl_space_type = "VIEW_3D"
-            bl_region_type = "UI"
-            bl_category = "PartMe MCP"
-
-            def draw(self, context):
-                layout = self.layout
-                status = runtime.session.status()
-                box = layout.box()
-                box.label(text="会话 ID  " + status["sessionId"], icon="LINKED")
-                row = box.row(align=True)
-                row.label(text="阶段：" + ("就绪" if status["stage"] == "Ready" else status["stage"]))
-                row.label(text=f'场景版本 {status["sceneRevision"]} | 等待操作 {runtime.executor.pending_count}')
-                _draw_progress(box, status["progress"])
-                if status["lastCommand"]:
-                    box.label(text="最近操作：" + status["lastCommand"])
-                for name in status["changedObjects"][:4]:
-                    box.label(text=name, icon="OBJECT_DATA")
-                if status["lastError"]:
-                    error = box.row()
-                    error.alert = True
-                    error.label(text=status["lastError"]["code"], icon="ERROR")
-                if status["needsInspection"]:
-                    box.label(text="等待重新检查场景", icon="INFO")
-                self.draw_approvals(layout)
-                row = layout.row(align=True)
-                row.scale_y = 1.15
-                if status["paused"]:
-                    row.operator("partme_blender.resume_work", icon="PLAY")
-                else:
-                    row.operator("partme_blender.pause_work", icon="PAUSE")
-                row.operator("partme_blender.revoke_work", text="撤销连接", icon="CANCEL")
-                layout.label(text="快捷操作", icon="TOOL_SETTINGS")
-                row = layout.row(align=True)
-                for name, label in (("CAMERA", "相机"), ("FRONT", "正面"), ("SIDE", "侧面"), ("TOP", "顶面")):
-                    row.operator("partme_blender.change_view", text=label).view = name
-                row = layout.row(align=True)
-                row.operator("partme_blender.play_work", text="播放 / 暂停动画", icon="PLAY")
-                row.prop(context.scene, "frame_current", text="帧")
-                for marker in sorted(context.scene.timeline_markers, key=lambda m: m.frame)[:12]:
-                    if context.scene.frame_start <= marker.frame <= context.scene.frame_end:
-                        layout.operator("partme_blender.jump_marker", text=f'{marker.frame}: {marker.name}').frame = marker.frame
-
-            @staticmethod
-            def draw_approvals(layout):
-                """Trusted local approval surface for gated commands refused by the Harness."""
-                pending = runtime.session.pending_authorizations()
-                if not pending:
-                    return
-                box = layout.box()
-                box.label(text=f"待批准操作 {len(pending)}", icon="LOCKED")
-                for entry in pending[:5]:
-                    column = box.column(align=True)
-                    column.label(text=f"{entry['command']}  {entry['requestId'][:20]}")
-                    if entry["summary"]:
-                        column.label(text=entry["summary"][:64])
-                    row = column.row(align=True)
-                    row.operator("partme_blender.approve_pending", text="批准一次", icon="CHECKMARK").request_id = entry["requestId"]
-                    row.operator("partme_blender.deny_pending", text="拒绝", icon="X").request_id = entry["requestId"]
-
         self.classes = [PARTMEBLENDER_OT_pause_work, PARTMEBLENDER_OT_resume_work, PARTMEBLENDER_OT_revoke_work,
                         PARTMEBLENDER_OT_approve_pending, PARTMEBLENDER_OT_deny_pending,
-                        PARTMEBLENDER_OT_change_view, PARTMEBLENDER_OT_play_work, PARTMEBLENDER_OT_jump_marker,
-                        VIEW3D_PT_partme_blender_session]
+                        PARTMEBLENDER_OT_change_view, PARTMEBLENDER_OT_play_work, PARTMEBLENDER_OT_jump_marker]
         registered = []
         try:
             for cls in self.classes:

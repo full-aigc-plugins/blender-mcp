@@ -33,19 +33,12 @@ report["addonDiscovered"] = "partme_blender_mcp" in discovered
 bpy.ops.preferences.addon_enable(module="partme_blender_mcp")
 report["addonEnabled"] = "partme_blender_mcp" in bpy.context.preferences.addons
 report["addonPanelRegistered"] = hasattr(bpy.types, "VIEW3D_PT_partme_blender_mcp")
-report["providerPanelsRegistered"] = all(hasattr(bpy.types, name) for name in (
+report["legacyProviderPanelsAbsent"] = not any(hasattr(bpy.types, name) for name in (
     "VIEW3D_PT_partme_blender_permissions",
     "VIEW3D_PT_partme_blender_assets",
     "VIEW3D_PT_partme_blender_ai_models",
 ))
-report["providerPanelsDefaultOpen"] = all(
-    "DEFAULT_CLOSED" not in getattr(getattr(bpy.types, name), "bl_options", frozenset())
-    for name in (
-        "VIEW3D_PT_partme_blender_permissions",
-        "VIEW3D_PT_partme_blender_assets",
-        "VIEW3D_PT_partme_blender_ai_models",
-    )
-)
+report["defaultWorkbenchTab"] = bpy.context.window_manager.partme_blender_ui_tab
 report["assetStrategyDefault"] = bpy.context.scene.partme_blender_asset_strategy
 
 from partme_blender_mcp import runtime as addon_runtime  # noqa: E402
@@ -59,13 +52,13 @@ report["runtimeDir"] = str(runtime_dir)
 report["sessionStarted"] = addon_runtime.is_running()
 report["descriptorMode"] = oct(handle.descriptor_path.stat().st_mode & 0o777)
 
-# 3. Register the shared session UI too: in a GUI both panels coexist, so their operator
-#    ids must not collide.
+# 3. Register shared session operators. The Add-on owns the only visible workbench;
+#    Frontend contributes actions and the header but no second sidebar panel.
 from partme_blender_mcp.harness.frontend import Frontend  # noqa: E402
 
 frontend = Frontend(bpy, handle)
 frontend.register()
-report["sessionPanelRegistered"] = hasattr(bpy.types, "VIEW3D_PT_partme_blender_session")
+report["singleWorkbenchPreserved"] = hasattr(bpy.types, "VIEW3D_PT_partme_blender_mcp")
 report["approvalOperators"] = sorted(
     name for name in dir(bpy.ops.partme_blender)
     if name in {"approve_request", "deny_request", "approve_pending", "deny_pending"}
@@ -170,7 +163,7 @@ report["providerRemoteMayContinue"] = cancelled["remoteMayContinue"]
 
 # 9. Orderly shutdown.
 frontend.unregister()
-report["sessionPanelUnregistered"] = not hasattr(bpy.types, "VIEW3D_PT_partme_blender_session")
+report["singleWorkbenchAfterFrontendStop"] = hasattr(bpy.types, "VIEW3D_PT_partme_blender_mcp")
 addon_runtime.stop()
 report["sessionStopped"] = not addon_runtime.is_running()
 report["descriptorRemoved"] = not handle.descriptor_path.exists()

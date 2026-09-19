@@ -51,8 +51,9 @@ class McpClient:
         env["PYTHONPATH"] = os.pathsep.join(
             filter(None, [str(addon_root), str(Path(__file__).resolve().parents[2] / "src"), env.get("PYTHONPATH")])
         )
+        mcp_python = os.environ.get("PARTME_BLENDER_MCP_PYTHON") or sys.executable
         self.process = subprocess.Popen(
-            [sys.executable, "-m", "partme_blender_mcp"],
+            [mcp_python, "-m", "partme_blender_mcp"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, env=env, cwd=str(addon_root),
         )

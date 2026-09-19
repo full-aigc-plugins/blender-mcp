@@ -10,7 +10,7 @@
 
 ## 项目定位
 
-PartMe Blender MCP 把标准 MCP `stdio` 请求转换为经过 Schema、事务、场景版本和路径策略保护的 Blender 操作。它不是文生 3D 模型，也不绑定某个 AI 客户端；它负责让已经连接的客户端可靠地创建、检查、动画化、渲染和导出 Blender 工程。
+PartMe Blender MCP 把 MCP 官方 SDK 的 `stdio`、Streamable HTTP 和兼容性 SSE 接入统一转换为经过 Schema、事务、场景版本和路径策略保护的 Blender 操作。它不是文生 3D 模型，也不绑定某个 AI 客户端；它负责让已经连接的客户端可靠地创建、检查、动画化、渲染和导出 Blender 工程。
 
 ### 适合谁
 
@@ -31,8 +31,9 @@ PartMe Blender MCP 把标准 MCP `stdio` 请求转换为经过 Schema、事务�
 ## 一眼看懂
 
 ```text
-Codex / Claude / MiniMax Design / Cursor / Generic MCP
-                         │  MCP 2025-06-18 · stdio
+本机智能体 · 局域网工作站 · 平板 · 兼容 MCP 客户端
+                         │  MCP 官方 Python SDK
+                         │  stdio / Streamable HTTP / SSE
                          ▼
 ┌────────────────────────────────────────────────────────┐
 │ PartMe Blender MCP                                     │
@@ -69,12 +70,13 @@ Codex / Claude / MiniMax Design / Cursor / Generic MCP
 |:---|:---|
 | 产品 | PartMe Blender MCP |
 | MCP Server ID | `partme_blender` |
-| 当前版本 | `0.4.0` 正式版 |
+| 当前版本 | `0.5.0` 正式版 |
 | MCP 协议 | `2025-06-18` |
 | Harness 兼容协议 | `codex-blender/v1` |
 | Blender | 4.2–5.2，按真实验证矩阵声明 |
 | Python | 3.11–3.13 |
-| 传输 | stdio → macOS UDS / Windows Named Pipe |
+| 公开传输 | 官方 SDK stdio、Streamable HTTP、兼容性 SSE |
+| Blender 私有桥接 | macOS UDS / Windows Named Pipe / loopback TCP fallback |
 | 许可证 | Apache-2.0 |
 
 ## 核心能力与边界
@@ -89,7 +91,7 @@ Codex / Claude / MiniMax Design / Cursor / Generic MCP
 | 镜头与渲染 | 相机路径、手持响应、Eevee/Cycles、passes、合成 | 同上 |
 | 模拟与编辑器 | 刚体、布料、软体、烟雾、Grease Pencil、Tracking、VSE | 同上 |
 | 质量与交付 | 几何/动作/镜头检查、快照、后台任务、多格式导出 | 同上 |
-| MCP | initialize、分页 tools/list、tools/call、structuredContent | 自动化测试覆盖 |
+| MCP | 官方 SDK initialize、分页 tools/list、tools/call、structuredContent；HTTP/SSE 独立生命周期 | 自动化传输契约覆盖 |
 
 ### 不负责
 
@@ -107,11 +109,11 @@ Codex / Claude / MiniMax Design / Cursor / Generic MCP
 
 ### 2. 下载 Release
 
-从 [v0.4.0](https://github.com/full-aigc-plugins/blender-mcp/releases/tag/v0.4.0)下载：
+从 [v0.5.0](https://github.com/full-aigc-plugins/blender-mcp/releases/tag/v0.5.0)下载：
 
 ```text
-partme-blender-mcp-addon-0.4.0.zip
-partme-blender-mcp-runtime-0.4.0.zip
+partme-blender-mcp-addon-0.5.0.zip
+partme-blender-mcp-runtime-0.5.0.zip
 SHA256SUMS.txt
 ```
 
@@ -127,7 +129,7 @@ SHA256SUMS.txt
 也可以直接用 pip 安装 Runtime 或平台包：
 
 ```bash
-python -m pip install ./partme-blender-mcp-runtime-0.4.0.zip
+python -m pip install ./partme-blender-mcp-runtime-0.5.0.zip
 python -m partme_blender_mcp --help
 ```
 
@@ -135,7 +137,7 @@ python -m partme_blender_mcp --help
 
 1. Blender → **Edit → Preferences → Add-ons**。
 2. 右上角菜单 → **从磁盘安装…**。
-3. 选择 `partme-blender-mcp-addon-0.4.0.zip`，不要解压。
+3. 选择 `partme-blender-mcp-addon-0.5.0.zip`，不要解压。
 4. 启用 **PartMe Blender MCP**。
 5. 回到 3D View，按 `N`，打开 **PartMe MCP**。
 6. 选择授权目录，点击 **Start MCP Server**。
@@ -169,6 +171,18 @@ python -m partme_blender_mcp --help
   }
 }
 ```
+
+跨机器使用时，可以在 Blender 的`接入`Tab 配置，也可以显式启动一个监听器。令牌通过环境变量传递，不进入进程命令行：
+
+```bash
+PARTME_BLENDER_REMOTE_TOKEN='<不透明令牌>' \
+python -m partme_blender_mcp serve-remote streamable-http \
+  --host 0.0.0.0 --port 9877 \
+  --public-url https://studio.example/mcp \
+  --issuer-url https://auth.example/
+```
+
+只有旧客户端才使用 `serve-remote sse --port 9878`。非 loopback 监听必须同时配置 Bearer Token、OAuth Issuer 和 HTTPS 公开地址；HTTP 与 SSE 是两个相互独立的进程和开关。
 
 新建客户端对话，先执行：
 
@@ -226,7 +240,7 @@ blender-mcp/
 
 ## 兼容与迁移
 
-`0.4.0` 是当前正式版本。Harness 暂时保留 `codex-blender/v1`，使现有 `codex-blender-plugin` 能进行差分迁移；新公共身份、MCP Server ID 和 Add-on 均使用 PartMe。未经验证的客户端保持 `DOCUMENTED_NOT_RUN`。
+`0.5.0` 是当前正式版本。Harness 暂时保留 `codex-blender/v1`，使现有 `codex-blender-plugin` 能进行差分迁移；新公共身份、MCP Server ID 和 Add-on 均使用 PartMe。未经验证的客户端保持 `DOCUMENTED_NOT_RUN`。
 
 ## 深入文档
 

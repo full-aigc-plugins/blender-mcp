@@ -4,14 +4,14 @@
 > 适用：macOS Apple Silicon / Intel、Blender 4.2–5.2  
 > 核验日期：2026-09-15
 
-> **预发布提醒**：`v0.4.0` 是正式版本。只从 GitHub Release 下载，并在安装前核对 SHA-256。
+> **预发布提醒**：`v0.5.0` 是正式版本。只从 GitHub Release 下载，并在安装前核对 SHA-256。
 
 ## 1. 下载两个组件
 
 PartMe Blender MCP 包含：
 
-1. `partme-blender-mcp-runtime-0.4.0.zip`：由 MCP 客户端启动。
-2. `partme-blender-mcp-addon-0.4.0.zip`：安装到 Blender。
+1. `partme-blender-mcp-runtime-0.5.0.zip`：由 MCP 客户端启动。
+2. `partme-blender-mcp-addon-0.5.0.zip`：安装到 Blender。
 
 下载入口：
 
@@ -27,15 +27,15 @@ Apple Silicon 选择 arm64；Intel Mac 选择 x64。
 
 ```bash
 cd "$HOME/Downloads"
-shasum -a 256 partme-blender-mcp-addon-0.4.0.zip
-shasum -a 256 partme-blender-mcp-runtime-0.4.0.zip
+shasum -a 256 partme-blender-mcp-addon-0.5.0.zip
+shasum -a 256 partme-blender-mcp-runtime-0.5.0.zip
 ```
 
 输出必须与 `SHA256SUMS.txt` 完全一致。不同则停止安装。
 
 ## 3. 普通用户一键安装
 
-1. 下载 `partme-blender-mcp-macos-arm64-0.4.0.tar.gz`。
+1. 下载 `partme-blender-mcp-macos-arm64-0.5.0.tar.gz`。
 2. 双击压缩包，macOS 会解压为同名文件夹。
 3. 打开文件夹，先阅读 `README-FIRST.txt`。
 4. 双击 `install_partme_blender_mcp.command`。
@@ -46,7 +46,7 @@ shasum -a 256 partme-blender-mcp-runtime-0.4.0.zip
 熟悉 Python 的用户也可以直接安装平台包本身：
 
 ```bash
-python3.13 -m pip install ./partme-blender-mcp-macos-arm64-0.4.0.tar.gz
+python3.13 -m pip install ./partme-blender-mcp-macos-arm64-0.5.0.tar.gz
 ```
 
 `Processing ...` 和 `Successfully installed ...` 是 pip 输出，不是下一条命令，不能复制回 zsh。
@@ -67,7 +67,7 @@ python3 -m partme_blender_mcp --version
 python3 -m partme_blender_mcp doctor --json
 ```
 
-`v0.4.0` 已通过源码 ZIP 的隔离 pip 安装与 MCP initialize 测试。
+`v0.5.0` 已通过源码 ZIP 的隔离 pip 安装与 MCP initialize 测试。
 
 ## 5. 在 Blender 中从磁盘安装
 
@@ -81,7 +81,7 @@ python3 -m partme_blender_mcp doctor --json
 
 然后：
 
-1. 选择 `partme-blender-mcp-addon-0.4.0.zip`，不要解压。
+1. 选择 `partme-blender-mcp-addon-0.5.0.zip`，不要解压。
 2. 搜索并启用 **PartMe Blender MCP**。
 3. 回到 3D View，按 `N`。
 4. 打开 **PartMe MCP** 页签。

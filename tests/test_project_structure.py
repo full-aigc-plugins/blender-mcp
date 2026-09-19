@@ -103,7 +103,7 @@ class LayoutTests(unittest.TestCase):
     def test_runtime_modules_live_only_in_src(self):
         """The Add-on tree owns Add-on code; the Harness is copied in at package time."""
         addon_modules = sorted(path.name for path in ADDON.glob("*.py"))
-        self.assertEqual(addon_modules, ["__init__.py", "panel.py", "runtime.py"])
+        self.assertEqual(addon_modules, ["__init__.py", "panel.py", "remote.py", "runtime.py"])
         self.assertFalse((ADDON / "harness").exists(), "harness must not be duplicated under addon/")
 
     def test_reimport_validation_script_is_inside_the_runtime_package(self):
@@ -188,11 +188,11 @@ class ArchiveIntegrityTests(unittest.TestCase):
         self.assertIn("partme_blender_mcp.harness.session", modules)
         self.assertEqual(_unresolved_relative_imports(entries, modules), [])
 
-    def test_runtime_package_declares_no_third_party_dependencies(self):
+    def test_runtime_package_declares_official_mcp_sdk_dependency(self):
         import tomllib
 
         project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
-        self.assertEqual(project["dependencies"], [], "the runtime must stay dependency free")
+        self.assertEqual(project["dependencies"], ["mcp>=2.2.0,<3"])
         self.assertEqual(project["requires-python"], ">=3.11,<3.14")
 
 
@@ -232,12 +232,14 @@ class CatalogIntegrityTests(unittest.TestCase):
 
 class BrandingTests(unittest.TestCase):
     def test_shared_session_ui_is_partme_branded(self):
-        """This panel is user visible in both Connector and Managed sessions."""
+        """Session operators and the single Add-on workbench remain PartMe branded."""
         frontend = (SRC / "harness/frontend.py").read_text(encoding="utf-8")
+        panel = (ADDON / "panel.py").read_text(encoding="utf-8")
         self.assertNotIn("Codex", frontend)
         self.assertNotIn("codex_", frontend.replace("codex-blender/v1", ""))
         self.assertIn('bl_idname = "partme_blender.', frontend)
-        self.assertIn('bl_category = "PartMe MCP"', frontend)
+        self.assertNotIn("VIEW3D_PT_partme_blender_session", frontend)
+        self.assertIn('bl_category = "PartMe MCP"', panel)
 
     def test_addon_panel_offers_local_approval(self):
         panel = (ADDON / "panel.py").read_text(encoding="utf-8")
