@@ -22,6 +22,9 @@ addon_root = Path(arguments[0]).resolve()
 state = arguments[1] if len(arguments) > 1 else "normal"
 if state not in {"normal", "generating", "failed", "approval"}:
     raise SystemExit(f"unknown UI acceptance state: {state}")
+requested_tab = os.environ.get("PARTME_VISIBLE_UI_TAB", "").upper()
+if requested_tab and requested_tab not in {"WORK", "ASSETS", "MODELS", "ACCESS"}:
+    raise SystemExit(f"unknown UI acceptance tab: {requested_tab}")
 if not (addon_root / "partme_blender_mcp").is_dir():
     raise SystemExit("Add-on root must contain partme_blender_mcp/")
 sys.path.insert(0, str(addon_root))
@@ -81,6 +84,9 @@ elif state == "approval":
         "expectedSceneRevision": handle.session.scene_revision,
     })
 
+if requested_tab:
+    bpy.context.window_manager.partme_blender_ui_tab = requested_tab
+
 view_areas = [area for area in bpy.context.screen.areas if area.type == "VIEW_3D"]
 for area in view_areas:
     if area.type == "VIEW_3D":
@@ -104,3 +110,16 @@ if report_path:
     }, sort_keys=True), encoding="utf-8")
 
 print(f"PARTME_VISIBLE_UI_READY={state}")
+
+screenshot_path = os.environ.get("PARTME_VISIBLE_UI_SCREENSHOT")
+if screenshot_path:
+    def capture_visible_ui():
+        target = Path(screenshot_path).resolve()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        bpy.ops.screen.screenshot(filepath=str(target))
+        print(f"PARTME_VISIBLE_UI_SCREENSHOT={target}")
+        return None
+
+    # Give Blender one redraw cycle so the selected tab and sidebar layout are
+    # present in the captured pixels rather than only in RNA state.
+    bpy.app.timers.register(capture_visible_ui, first_interval=1.0)

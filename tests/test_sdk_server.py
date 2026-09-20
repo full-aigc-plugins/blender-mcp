@@ -55,19 +55,32 @@ class OfficialSdkServerTests(unittest.IsolatedAsyncioTestCase):
 
         adapter = Adapter()
         server = build_official_server(adapter)
-        page = await server.get_request_handler("tools/list").handler(
-            object(), types.PaginatedRequestParams(cursor="offset:0")
-        )
-        self.assertEqual(page.next_cursor, "offset:50")
-        self.assertEqual(page.tools[0].input_schema["additionalProperties"], False)
-        self.assertTrue(page.tools[0].annotations.read_only_hint)
-        self.assertEqual(page.tools[0].meta, {"risk": "read"})
+        if hasattr(server, "get_request_handler"):
+            page = await server.get_request_handler("tools/list").handler(
+                object(), types.PaginatedRequestParams(cursor="offset:0")
+            )
+            result = await server.get_request_handler("tools/call").handler(
+                object(), types.CallToolRequestParams(name="blender_probe", arguments={})
+            )
+        else:
+            page = (await server.request_handlers[types.ListToolsRequest](
+                types.ListToolsRequest(params=types.PaginatedRequestParams(cursor="offset:0"))
+            )).root
+            result = (await server.request_handlers[types.CallToolRequest](
+                types.CallToolRequest(params=types.CallToolRequestParams(
+                    name="blender_probe", arguments={}
+                ))
+            )).root
+        page_payload = page.model_dump(by_alias=True)
+        tool_payload = page_payload["tools"][0]
+        self.assertEqual(page_payload["nextCursor"], "offset:50")
+        self.assertEqual(tool_payload["inputSchema"]["additionalProperties"], False)
+        self.assertTrue(tool_payload["annotations"]["readOnlyHint"])
+        self.assertEqual(tool_payload["_meta"], {"risk": "read"})
 
-        result = await server.get_request_handler("tools/call").handler(
-            object(), types.CallToolRequestParams(name="blender_probe", arguments={})
-        )
-        self.assertEqual(result.structured_content, {"ok": True})
-        self.assertFalse(result.is_error)
+        result_payload = result.model_dump(by_alias=True)
+        self.assertEqual(result_payload["structuredContent"], {"ok": True})
+        self.assertFalse(result_payload["isError"])
         self.assertEqual(adapter.calls[-1], ("call", "blender_probe", {}))
 
     def test_non_loopback_requires_authentication_and_https_public_url(self):

@@ -361,3 +361,10 @@
 - 隔离 Blender 5.2.1 LTS 的 Rigify 验收通过：检测到内置扩展，`allowDownload=false` 启用并保存隔离偏好，未尝试下载；从真实 human metarig 生成 `RIG-PartMe Rigify MetaRig`，回执包含 221 个新对象。
 - `blender-design-plugin` 的 `blender_provider_stage_asset` 已适配异步契约：回执附带 `nextTool=blender_asset_operation_result` 和完整 `providerId/taskId` 参数，不会把 accepted 当作已暂存；该仓库 481 项测试通过、1 项跳过。
 - 此证据关闭“供应商网络请求占用 Blender 主线程”源码与 fixture 门禁，但不替代真实 Sketchfab/Poly Pizza/Hyper3D/混元凭证、费用授权、生成质量和真实供应商完整事务导入验收；当前用户前台 Blender 仍未重启加载该候选。
+
+## 2026-09-21 四 Tab 窄侧栏与复制操作复验
+
+- 在当前前台 Blender 5.2.1 LTS、约 176 px 的真实 N 侧栏内依次切换“制作 / 素材 / 模型 / 接入”四个 Tab。制作页四个视角快捷操作均为“图标 + 文字”的单一按钮，共四块；素材与模型供应商保持单行卡片，没有恢复为身份、状态、操作三行布局。
+- 接入页的 Streamable HTTP 与 SSE 地址行均完整显示“复制”两个汉字；实现使用 3 个 UI 单位的右对齐轻量操作位，不再以固定 10% 分栏裁切文字。Token 的“配置 Token / 重新生成 / 复制 Token”保持同一行。
+- 实际点击 Streamable HTTP 的“复制”，Blender 显示“远程 MCP 地址已复制（不含密钥）”回执；这验证了真实 operator 路径，不只是静态布局。没有修改场景对象或保存当前未命名文件。
+- `visible_ui_acceptance.py` 新增 `PARTME_VISIBLE_UI_TAB` 与 `PARTME_VISIBLE_UI_SCREENSHOT`，可在独立 Blender 配置中选择四个 Tab 并延迟调用 Blender 自身截图 operator，便于后续固定状态复验；非法 Tab 会在启动时拒绝。

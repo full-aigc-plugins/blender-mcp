@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+import inspect
 import ipaddress
 import json
 import os
@@ -142,14 +143,42 @@ def build_official_server(adapter) -> Server:
         result = await anyio.to_thread.run_sync(lambda: adapter.call_tool(params.name, arguments))
         return _result_from_dict(result)
 
-    return Server(
+    server_parameters = inspect.signature(Server).parameters
+    if "on_list_tools" in server_parameters:
+        return Server(
+            MCP_SERVER_NAME,
+            version=__version__,
+            title=PRODUCT_NAME,
+            description="Secure cross-client Blender MCP runtime",
+            on_list_tools=list_tools,
+            on_call_tool=call_tool,
+        )
+
+    # MCP Python SDK 1.x registers low-level handlers through decorators,
+    # while SDK 2.x accepts handlers in the constructor. Keep both paths on
+    # official public APIs so stdio remains usable in host-managed runtimes.
+    server = Server(
         MCP_SERVER_NAME,
         version=__version__,
-        title=PRODUCT_NAME,
-        description="Secure cross-client Blender MCP runtime",
-        on_list_tools=list_tools,
-        on_call_tool=call_tool,
+        instructions="Secure cross-client Blender MCP runtime",
     )
+
+    @server.list_tools()
+    async def legacy_list_tools(request: types.ListToolsRequest) -> types.ListToolsResult:
+        cursor = getattr(getattr(request, "params", None), "cursor", None)
+        page = await anyio.to_thread.run_sync(lambda: adapter.list_tools(cursor=cursor))
+        return types.ListToolsResult(
+            tools=[_tool_from_dict(tool) for tool in page["tools"]],
+            nextCursor=page.get("nextCursor"),
+        )
+
+    @server.call_tool(validate_input=False)
+    async def legacy_call_tool(name, arguments):
+        arguments = arguments if isinstance(arguments, dict) else {}
+        result = await anyio.to_thread.run_sync(lambda: adapter.call_tool(name, arguments))
+        return _result_from_dict(result)
+
+    return server
 
 
 async def _run_stdio(adapter) -> None:
