@@ -47,6 +47,7 @@
 - [x] 更新活动 README、仓库 URL 和验证状态。
 - [x] 构建并验证 `blender-mcp 0.5.2` 最终资产，更新插件 runtime lock。
 - [ ] 运行单元、分发、真实 Blender 与客户端矩阵验收；Runtime、隔离 Blender 与 Codex 已通过，ZCode/Kimi 新版本、Windows及前台重启仍待完成。
+- [x] 使用 ZCode 0.16.9 自带插件管理器将安装版本更新到 0.11.2，并核对清单、MCP、hook、runtime lock 和 vendored 资产摘要；现有旧会话尚未重启，因此真实 0.11.2 MCP 调用仍属于上项客户端矩阵门禁。
 - [x] 发布 runtime、插件和市场清单，并记录远端与 Codex/Blender 磁盘安装证据。
 
 ## V4.2 真实联动增量

@@ -7,8 +7,9 @@
 - `blender-mcp 0.5.2` 与 `blender-design 0.11.2` 已正式发布；插件 `runtime.lock.json` 已锁定 0.5.2 Add-on/Runtime 及其 SHA-256，中央市场 Blender 条目已同步。当前 Codex 安装缓存为 0.11.2，Blender 5.2 磁盘 Add-on 为 0.5.2。
 - 0.5.2 Runtime 全量 199 项测试通过；隔离 Blender 5.2.1 使用官方 SDK 完成 stdio 握手，目录为 178 个工具、4 页，并通过读、事务写、审批拒绝/批准重试、提交和回滚。
 - 当前前台 Blender 进程及其 HTTP/SSE 子进程仍加载 0.5.1，若干 ZCode 存量进程仍加载 0.11.1。为保护未确认保存的场景，本轮未强制重启；因此不能用磁盘 0.5.2 代替当前窗口的 UI 与运行态验收。
+- 已通过 ZCode 0.16.9 自带插件管理器刷新 `full-aigc-plugins` 市场并将 `blender-design` 从 0.11.1 更新到 0.11.2；`plugins list` 解析出 33 项 skill、`partme_blender` MCP、3 个可运行 hook，诊断为空。安装包内 0.5.2 Add-on/Runtime SHA-256 与 `runtime.lock.json` 完全一致。现有 ZCode 会话的 MCP 子进程仍是 0.11.1，需新会话或重启后才能形成 0.11.2 宿主调用证据。
 - Hyper3D 保持客户端 OAuth，不把 OAuth Token 写入 Blender。新建 Codex 只读会话在初始化阶段仍记录 HTTP 202 空响应缺少 `Content-Type` 的兼容告警，但重试后成功调用 `rodin_get_status`，得到预期的“Generation was not found”，并由客户端列出 7 个工具；未调用生成或变更工具。当前结论改为“OAuth 已授权且可重试连接，仍有初始化兼容告警”，不再沿用“完全连接失败”。
-- 仍未完成：前台 Blender 保存后重启与四 Tab 实屏复核、0.11.2 的 ZCode/Kimi 新进程验收、Windows 当前版本验收，以及需要真实凭证/预算的供应商生成到事务导入链。
+- 仍未完成：前台 Blender 保存后重启与四 Tab 实屏复核、0.11.2 的 ZCode 新进程和 Kimi 验收、Windows 当前版本验收，以及需要真实凭证/预算的供应商生成到事务导入链。
 
 ### 最新增量：复制按钮与无效轮询响应
 
