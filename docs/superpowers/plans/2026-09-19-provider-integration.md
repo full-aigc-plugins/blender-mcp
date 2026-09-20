@@ -47,6 +47,7 @@
 - [x] 更新活动 README、仓库 URL 和验证状态。
 - [x] 构建并验证 `blender-mcp 0.5.2` 最终资产，更新插件 runtime lock。
 - [ ] 运行单元、分发、真实 Blender 与客户端矩阵验收；Runtime、隔离 Blender 与 Codex 已通过，ZCode/Kimi 新版本、Windows及前台重启仍待完成。
+- [x] 修复 0.5.2 后续主线的 Ruff 发布门禁；GitHub CI `35529942614` 在 Windows 2025、Ubuntu 和 macOS 三矩阵完成 lint、199 项测试覆盖的测试/打包步骤及证据上传。该 Windows 证据不替代真实 Windows Blender GUI 验收。
 - [x] 使用 ZCode 0.16.9 自带插件管理器将安装版本更新到 0.11.2，并核对清单、MCP、hook、runtime lock 和 vendored 资产摘要；全新 ZCode CLI 会话协商 MCP `2026-07-28`、发现 183 个工具并真实只读调用 `blender_connection_status` 成功。
 - [x] 针对不提供插件管理命令的 Kimi Code CLI 0.43.1，使用活动 `~/.kimi-code` 配置保留原服务器并追加 0.11.2 `partme_blender`，随后由真实 Kimi 会话只读调用 `blender_connection_status` 成功。
 - [x] 发布 runtime、插件和市场清单，并记录远端与 Codex/Blender 磁盘安装证据。

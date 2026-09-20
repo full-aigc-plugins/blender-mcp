@@ -4,6 +4,7 @@
 
 ### 2026-09-21 发布与当前运行态复核
 
+- 远端审计发现 0.5.2 发布提交的 GitHub CI 因新增 Blender smoke 脚本触发 33 项 Ruff 门禁而失败；功能测试本身并非失败。已修复动态导入说明、闭包变量捕获和无效变量，当前本地 Ruff 全绿、199 项 Runtime 测试通过。GitHub CI run `35529942614` 随后在 Windows 2025 / Python 3.13、Ubuntu / Python 3.11、macOS 14 / Python 3.13 三个矩阵任务中全部通过，均完成 lint、测试、打包和证据上传。
 - `blender-mcp 0.5.2` 与 `blender-design 0.11.2` 已正式发布；插件 `runtime.lock.json` 已锁定 0.5.2 Add-on/Runtime 及其 SHA-256，中央市场 Blender 条目已同步。当前 Codex 安装缓存为 0.11.2，Blender 5.2 磁盘 Add-on 为 0.5.2。
 - 0.5.2 Runtime 全量 199 项测试通过；隔离 Blender 5.2.1 使用官方 SDK 完成 stdio 握手，目录为 178 个工具、4 页，并通过读、事务写、审批拒绝/批准重试、提交和回滚。
 - 当前前台 Blender 进程及其 HTTP/SSE 子进程仍加载 0.5.1，若干 ZCode 存量进程仍加载 0.11.1。为保护未确认保存的场景，本轮未强制重启；因此不能用磁盘 0.5.2 代替当前窗口的 UI 与运行态验收。
