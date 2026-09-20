@@ -49,6 +49,18 @@ class SessionFixture:
 
 
 class DenialAndPendingTests(unittest.TestCase):
+    def test_provider_staging_is_denied_before_resolver_dispatch(self):
+        fixture = SessionFixture()
+        self.assertEqual(fixture.call('stage', 'asset.fetch_generated',
+            {'providerId': 'hyper3d', 'params': {'task_uuid': 'job'}}, revision=0),
+            'AUTHORIZATION_REQUIRED')
+        self.assertEqual(fixture.calls, [])
+        fixture.session.approve_pending('stage')
+        self.assertEqual(fixture.call('stage', 'asset.fetch_generated',
+            {'providerId': 'hyper3d', 'params': {'task_uuid': 'job'}}, revision=0), 'succeeded')
+        self.assertEqual(fixture.calls, [('asset.fetch_generated',
+            {'providerId': 'hyper3d', 'params': {'task_uuid': 'job'}})])
+
     def test_gated_command_without_approval_is_refused_and_listed(self):
         fixture = SessionFixture()
         self.assertEqual(

@@ -33,6 +33,18 @@ class CommandDefinition:
 class CommandRegistry:
     def __init__(self):
         self._commands: dict[str, CommandDefinition] = {}
+        self._closers: list[Callable[[], None]] = []
+
+    def register_closer(self, closer: Callable[[], None]) -> None:
+        self._closers.append(closer)
+
+    def close(self) -> None:
+        closers, self._closers = reversed(self._closers), []
+        for closer in closers:
+            try:
+                closer()
+            except Exception:
+                pass
 
     def register(self, name: str, handler, *, validate=None, risk: str = "standard",
                  metadata=None, availability=None) -> None:
@@ -92,6 +104,24 @@ class CommandRegistry:
         name = arguments['id']
         profile = arguments.get('profile')
         runtime = arguments.get('runtime')
+        if isinstance(profile, dict):
+            from .production_profile import ProductionProfile
+            profile = ProductionProfile(profile)
+        elif profile is not None and not callable(getattr(profile, 'verdict', None)):
+            raise HarnessError('INVALID_ARGUMENT', 'profile must be a production profile object')
+        if isinstance(runtime, dict):
+            from .production_profile import RuntimeIdentity
+            version = runtime.get('blenderVersion')
+            string_fields = ('platform', 'architecture', 'runtimeMode')
+            if (not isinstance(version, (list, tuple)) or len(version) != 3
+                    or any(type(value) is not int or value < 0 for value in version)
+                    or any(not isinstance(runtime.get(field), str) or not runtime[field]
+                           for field in string_fields)):
+                raise HarnessError('INVALID_ARGUMENT', 'runtime identity is invalid')
+            runtime = RuntimeIdentity(
+                blender_version=tuple(version), platform=runtime['platform'],
+                architecture=runtime['architecture'], runtime_mode=runtime['runtimeMode'],
+            )
         # When profile is given without an explicit runtime, build one from
         # the individual fields so callers can query "how does this look on
         # 4.2.23 / windows / managed?" without hand-constructing a RuntimeIdentity.

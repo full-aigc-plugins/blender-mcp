@@ -2,7 +2,8 @@
 
 Run inside Blender, never against a user's open project:
 
-    BLENDER_USER_CONFIG=/tmp/pbm-config BLENDER_USER_SCRIPTS=/tmp/pbm-addons \\
+    PARTME_BLENDER_MCP_PYTHON=/path/to/runtime/venv/bin/python \\
+      BLENDER_USER_CONFIG=/tmp/pbm-config BLENDER_USER_SCRIPTS=/tmp/pbm-addons \\
       /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup \\
       --python-exit-code 1 --python tests/runtime/generic_mcp_client_handshake.py \\
       -- /tmp/addon-extract/partme_blender_mcp
@@ -26,7 +27,9 @@ import threading
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+if '--' not in sys.argv:
+    raise SystemExit('pass the extracted Add-on directory after --')
+sys.path.insert(0, str(Path(sys.argv[sys.argv.index('--') + 1]).resolve()))
 
 import bpy  # noqa: E402
 
@@ -49,9 +52,14 @@ class McpClient:
         env = dict(os.environ)
         env["PARTME_BLENDER_RUNTIME_DIR"] = str(runtime_dir)
         env["PYTHONPATH"] = os.pathsep.join(
-            filter(None, [str(addon_root), str(Path(__file__).resolve().parents[2] / "src"), env.get("PYTHONPATH")])
+            filter(None, [str(addon_root), env.get("PYTHONPATH")])
         )
-        mcp_python = os.environ.get("PARTME_BLENDER_MCP_PYTHON") or sys.executable
+        mcp_python = os.environ.get("PARTME_BLENDER_MCP_PYTHON")
+        if not mcp_python:
+            raise RuntimeError(
+                "set PARTME_BLENDER_MCP_PYTHON to the installed PartMe runtime venv; "
+                "Blender's embedded Python does not contain the official MCP SDK"
+            )
         self.process = subprocess.Popen(
             [mcp_python, "-m", "partme_blender_mcp"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -105,6 +113,7 @@ def _scene_objects(client):
 def run_client(runtime_dir: Path, addon_root: Path, report: dict, approval_gate: threading.Event,
                approval_box: dict, approval_done: threading.Event):
     client = McpClient(runtime_dir, addon_root)
+    approval_box['client'] = client
     try:
         # 1. initialize: the client declares its identity and protocol version.
         initial = client.request("initialize", {
@@ -130,6 +139,7 @@ def run_client(runtime_dir: Path, addon_root: Path, report: dict, approval_gate:
                 break
         report["toolPages"] = pages
         report["toolCount"] = len(names)
+        assert len(names) == len(set(names)), 'duplicate tools across pages'
         report["doubleUnderscoreNames"] = [name for name in names if "__" in name][:5]
 
         # 4. read-only smoke: exactly what the guides tell a user to run first.
@@ -194,8 +204,9 @@ def run_client(runtime_dir: Path, addon_root: Path, report: dict, approval_gate:
         report["clientExitCode"] = client.close()
     except Exception as exc:  # keep the host-side report complete
         report["clientError"] = repr(exc)
-        report["clientStderr"] = client.process.stderr.read()[-2000:]
         client.process.kill()
+        _, stderr = client.process.communicate(timeout=5)
+        report["clientStderr"] = stderr[-2000:]
 
 
 def _short_runtime_dir() -> Path:
@@ -222,8 +233,14 @@ def main():
         daemon=True,
     )
     thread.start()
+    deadline = time.monotonic() + 90
     try:
         while thread.is_alive():
+            if time.monotonic() >= deadline:
+                client = approval_box.get('client')
+                if client is not None:
+                    client.process.kill()
+                raise TimeoutError('transaction handshake exceeded 90 seconds')
             # Blender's main thread owns command execution; drive the queue while the
             # external client waits on the socket.
             runtime.executor.pump()
@@ -237,6 +254,17 @@ def main():
         runtime.executor.pump()
         runtime.close()
     print("HANDSHAKE=" + json.dumps(report, ensure_ascii=False, sort_keys=True, default=str))
+    assert 'clientError' not in report, report.get('clientError')
+    expected = {
+        'transactionBegin': 'succeeded', 'createIsError': False,
+        'transactionCommit': 'succeeded', 'probePresentAfterCreate': True,
+        'gatedIsError': True, 'gatedErrorCode': 'AUTHORIZATION_REQUIRED',
+        'probePresentAfterRefusal': True, 'gatedRetryIsError': False,
+        'probePresentAfterDelete': False, 'transactionRollback': 'succeeded',
+        'probePresentAfterRollback': True, 'clientExitCode': 0,
+    }
+    for key, value in expected.items():
+        assert report.get(key) == value, (key, report.get(key), value)
 
 
 if __name__ == "__main__":

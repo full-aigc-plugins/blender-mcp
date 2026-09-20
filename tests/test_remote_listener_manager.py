@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -60,6 +61,11 @@ class FakeProcess:
 class RemoteListenerManagerTests(unittest.TestCase):
     def setUp(self):
         self.remote = _load_remote()
+        temporary = tempfile.TemporaryDirectory(prefix="partme-remote-unit-")
+        self.addCleanup(temporary.cleanup)
+        directory_patch = patch.object(self.remote.tempfile, "gettempdir", return_value=temporary.name)
+        directory_patch.start()
+        self.addCleanup(directory_patch.stop)
         self.calls = []
 
         def factory(command, **kwargs):
@@ -83,6 +89,11 @@ class RemoteListenerManagerTests(unittest.TestCase):
         self.assertEqual(self.manager.snapshot(preferences, "streamable-http")["state"], "stopping")
         self.assertTrue(self.manager.snapshot(preferences, "sse")["running"])
 
+    def test_listener_targets_its_own_blender_session(self):
+        self.manager.start(_preferences(), "streamable-http", descriptor_path=Path("/tmp/own-session.json"))
+        self.assertEqual(self.calls[-1][1]["env"]["PARTME_BLENDER_DESCRIPTOR"],
+                         str(Path("/tmp/own-session.json").resolve()))
+
     def test_public_address_uses_configured_https_base(self):
         preferences = _preferences(public_base_url="https://studio.example/base")
         self.assertEqual(
@@ -102,6 +113,28 @@ class RemoteListenerManagerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Python"):
             self.manager.start(_preferences(mcp_python="/missing/python"), "streamable-http")
         self.assertEqual(self.calls, [])
+
+    def test_normal_shutdown_does_not_expose_process_log_as_message(self):
+        preferences = _preferences()
+        self.manager.start(preferences, "sse")
+        self.manager._entries["sse"]["log"].write(b"INFO: Shutting down\nINFO: Finished server process\n")
+        self.manager.stop(preferences, "sse")
+        self.manager.poll(preferences)
+        snapshot = self.manager.snapshot(preferences, "sse")
+        self.assertEqual(snapshot["state"], "stopped")
+        self.assertEqual(snapshot["message"], "")
+        self.assertTrue(snapshot["logPath"])
+
+    def test_unexpected_exit_has_short_message_not_raw_log(self):
+        preferences = _preferences()
+        self.manager.start(preferences, "sse")
+        self.manager._entries["sse"]["log"].write(b"Traceback\n" * 100)
+        self.manager._entries["sse"]["process"].returncode = 1
+        self.manager.poll(preferences)
+        snapshot = self.manager.snapshot(preferences, "sse")
+        self.assertEqual(snapshot["state"], "error")
+        self.assertNotIn("Traceback", snapshot["message"])
+        self.assertLess(len(snapshot["message"]), 80)
 
     def test_non_loopback_is_rejected_before_spawn_without_remote_security(self):
         preferences = _preferences(

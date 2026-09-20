@@ -4,7 +4,9 @@ import json
 import os
 import secrets
 import shutil
+import subprocess
 import sys
+import unicodedata
 from pathlib import Path
 
 import bpy
@@ -29,13 +31,72 @@ _TABS = [
     ("ACCESS", "接入", "本地与远程 MCP 接入"),
 ]
 _PROVIDER_SYNC_MAX_ATTEMPTS = 3
-# Blender reports region width in framebuffer pixels on Retina displays and in
-# logical pixels on standard-DPI displays. 820 keeps the compact composition
-# active through the documented 240 px sidebar target on both classes while a
-# normally widened 320 px panel retains the one-line V4 composition.
-_COMPACT_REGION_WIDTH = 820
+# 断点使用 View2D 内容坐标，不能直接使用屏幕帧缓冲宽度。
+_COMPACT_REGION_WIDTH = 360
 _provider_sync_attempts = 0
 _status_previews = None
+_playback_snapshot = {}
+_hyper3d_oauth_process = None
+
+
+def _refresh_playback_ui():
+    """主线程定时检查播放状态；只重绘制作页且仅在状态变化时重绘。"""
+    global _playback_snapshot
+    wm = bpy.context.window_manager
+    current = {}
+    if wm and getattr(wm, "partme_blender_ui_tab", None) == "WORK":
+        for window in wm.windows:
+            screen = window.screen
+            if screen is None or window.scene is None:
+                continue
+            key = window.as_pointer()
+            state = (screen.is_animation_playing, window.scene.frame_current)
+            current[key] = state
+            if _playback_snapshot.get(key) != state:
+                for area in screen.areas:
+                    if area.type == "VIEW_3D":
+                        area.tag_redraw()
+    _playback_snapshot = current
+    return 0.1
+
+
+def _sidebar_width(context):
+    """以 View2D 坐标计算内容宽度，适配侧栏缩放和 Retina。"""
+    region = context.region
+    try:
+        left = region.view2d.region_to_view(0, 0)[0]
+        right = region.view2d.region_to_view(region.width, 0)[0]
+        scale = max(0.5, context.preferences.system.ui_scale)
+        return max(120, abs(right - left) / scale - 16)
+    except AttributeError:
+        return max(120, region.width - 32)
+
+
+def _small_actions(row, units=2.0):
+    """辅助操作按内容靠右收缩，避免抢占名称和状态的宽度。"""
+    actions = row.row(align=True)
+    actions.alignment = "RIGHT"
+    actions.ui_units_x = units
+    return actions
+
+
+def _wrapped_label(layout, context, text, icon="NONE"):
+    """按可见宽度换行中英文说明，保留完整错误和权限提示。"""
+    budget = max(12, int((_sidebar_width(context) - 24) / 7))
+    lines, line, size = [], "", 0
+    for char in str(text):
+        width = 2 if unicodedata.east_asian_width(char) in {"W", "F"} else 1
+        if char == "\n" or (line and size + width > budget):
+            lines.append(line)
+            line, size = "", 0
+        if char != "\n":
+            line += char
+            size += width
+    if line:
+        lines.append(line)
+    column = layout.column(align=True)
+    for index, line in enumerate(lines):
+        column.label(text=line, icon=icon if index == 0 else "NONE")
 
 
 def _register_status_icons():
@@ -110,7 +171,7 @@ def _auto_start_remote(context):
         ("sse", preferences.remote_auto_start_sse),
     ):
         if enabled and not manager().snapshot(preferences, transport)["running"]:
-            manager().start(preferences, transport)
+            manager().start(preferences, transport, descriptor_path=runtime.current().descriptor_path)
     if any((preferences.remote_auto_start_http, preferences.remote_auto_start_sse)):
         if not bpy.app.timers.is_registered(_poll_remote_listeners):
             bpy.app.timers.register(_poll_remote_listeners, first_interval=0.1)
@@ -147,11 +208,25 @@ def _sync_polypizza_key(context) -> None:
         os.environ["POLYPIZZA_API_KEY"] = preferences.polypizza_api_key
 
 
+def _sync_hyper3d_oauth(context) -> None:
+    """Refresh OAuth readiness from the selected client without reading its token."""
+    preferences = _addon_preferences(context)
+    if preferences is None or preferences.hyper3d_auth_mode != "MCP_OAUTH":
+        return
+    if _hyper3d_oauth_process is not None and _hyper3d_oauth_process.poll() is None:
+        return
+    from .hyper3d_auth import sync_preferences
+    sync_preferences(preferences)
+
+
 def _apply_provider_preferences(context, *, refresh=True):
     from .harness.provider_registry import ProviderRegistryError, get_provider_registry
 
     _sync_polypizza_key(context)
+    _sync_hyper3d_oauth(context)
     registry = get_provider_registry()
+    if refresh:
+        registry.refresh(context)
     stored = _enabled_preferences(context)
     for provider in registry.snapshot(context)["providers"]:
         if not provider["mutable"]:
@@ -161,7 +236,7 @@ def _apply_provider_preferences(context, *, refresh=True):
             registry.set_enabled(provider["providerId"], enabled, context=context)
         except ProviderRegistryError:
             continue
-    return registry.refresh(context) if refresh else registry.snapshot(context)
+    return registry.snapshot(context)
 
 
 def _deferred_provider_sync():
@@ -204,6 +279,26 @@ class PARTMEBLENDER_Preferences(bpy.types.AddonPreferences):
     bl_idname = __package__
 
     provider_enabled_json: bpy.props.StringProperty(default="{}", options={"HIDDEN"})
+    sketchfab_api_key: bpy.props.StringProperty(name="Sketchfab API Key", subtype="PASSWORD")
+    hyper3d_api_key: bpy.props.StringProperty(name="Rodin API Key", subtype="PASSWORD")
+    hyper3d_auth_mode: bpy.props.EnumProperty(name="授权方式", default="MCP_OAUTH", items=(
+        ("MCP_OAUTH", "客户端 OAuth（推荐）", "免费账户通过 Codex 或 Claude Code 浏览器授权"),
+        ("API_KEY", "API Key", "开发者 API 使用 Bearer Key"),
+    ))
+    hyper3d_oauth_client: bpy.props.EnumProperty(name="授权客户端", default="CODEX", items=(
+        ("CODEX", "Codex", "在 Codex 中配置 Hyper3D MCP"),
+        ("CLAUDE", "Claude Code", "在 Claude Code 中配置 Hyper3D MCP"),
+    ))
+    hyper3d_oauth_status: bpy.props.EnumProperty(default="NOT_AUTHORIZED", options={"HIDDEN"}, items=(
+        ("NOT_AUTHORIZED", "未授权", ""), ("AUTHORIZING", "授权中", ""),
+        ("AUTHORIZED", "已授权", ""), ("ERROR", "授权失败", ""),
+    ))
+    hyper3d_mode: bpy.props.EnumProperty(items=(("MAIN_SITE", "hyper3d.ai", ""), ("FAL_AI", "fal.ai", "")))
+    hunyuan3d_mode: bpy.props.EnumProperty(items=(("OFFICIAL_API", "腾讯云官方 API", ""), ("LOCAL_API", "本地 API", "")))
+    hunyuan3d_secret_id: bpy.props.StringProperty(name="SecretId", subtype="PASSWORD")
+    hunyuan3d_secret_key: bpy.props.StringProperty(name="SecretKey", subtype="PASSWORD")
+    hunyuan3d_api_url: bpy.props.StringProperty(name="API URL")
+    hunyuan3d_intl_pro: bpy.props.BoolProperty(name="国际站 Pro 账户")
     polypizza_api_key: bpy.props.StringProperty(
         name="Poly Pizza API Key",
         description="Stored in Blender user preferences; never written to the .blend or MCP receipts",
@@ -260,6 +355,7 @@ class PARTMEBLENDER_Preferences(bpy.types.AddonPreferences):
         row = box.row(align=True)
         row.operator(PARTMEBLENDER_OT_configure_remote_token.bl_idname, text="配置 Token", icon="LOCKED")
         row.operator(PARTMEBLENDER_OT_generate_remote_token.bl_idname, text="生成新 Token", icon="FILE_REFRESH")
+        row.operator(PARTMEBLENDER_OT_copy_remote_token.bl_idname, text="复制 Token", icon="COPYDOWN")
         box.prop(self, "tls_certfile")
         box.prop(self, "tls_keyfile")
         row = box.row(align=True)
@@ -378,9 +474,18 @@ class PARTMEBLENDER_OT_set_provider_enabled(bpy.types.Operator):
         from .harness.provider_registry import ProviderRegistryError, get_provider_registry
         registry = get_provider_registry()
         try:
-            registry.refresh(context)
+            snapshot = registry.refresh(context)
+            row = next((item for item in snapshot["providers"]
+                        if item["providerId"] == self.provider_id), None)
+            if (self.enabled and row is not None and row["configurable"]
+                    and row["state"] == "configuration_required"):
+                result = bpy.ops.partme_blender.provider_settings(
+                    "INVOKE_DEFAULT", provider_id=self.provider_id, enable_after_save=True,
+                )
+                return {"CANCELLED"} if "CANCELLED" in result else {"FINISHED"}
             registry.set_enabled(self.provider_id, self.enabled, context=context)
             _save_enabled_preference(context, self.provider_id, self.enabled)
+            bpy.ops.wm.save_userpref()
             snapshot = registry.refresh(context)
             row = next(item for item in snapshot["providers"] if item["providerId"] == self.provider_id)
         except ProviderRegistryError as exc:
@@ -399,11 +504,96 @@ def _open_addon_preferences(module: str):
         pass
 
 
+class PARTMEBLENDER_OT_hyper3d_oauth(bpy.types.Operator):
+    bl_idname = "partme_blender.hyper3d_oauth"
+    bl_label = "Hyper3D 浏览器授权"
+    bl_description = "在所选客户端中配置 Hyper3D MCP，并通过浏览器 OAuth 授权"
+    client: bpy.props.EnumProperty(items=(("CODEX", "Codex", ""),
+                                          ("CLAUDE", "Claude Code", "")))
+    _process = None
+    _timer = None
+
+    def invoke(self, context, _event):
+        global _hyper3d_oauth_process
+        if _hyper3d_oauth_process is not None and _hyper3d_oauth_process.poll() is None:
+            self.report({"WARNING"}, "Hyper3D OAuth 授权正在进行")
+            return {"CANCELLED"}
+        from .hyper3d_auth import find_client, inspect_server, start_authorization
+        executable = find_client(self.client)
+        if executable is None:
+            self.report({"ERROR"}, "未找到所选客户端 CLI；请先安装并启动 Codex 或 Claude Code")
+            return {"CANCELLED"}
+        try:
+            configured = inspect_server(self.client, executable)
+            self._process = start_authorization(
+                self.client, executable, configured=configured)
+        except (OSError, subprocess.SubprocessError, ValueError) as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        _hyper3d_oauth_process = self._process
+        preferences = _addon_preferences(context)
+        preferences.hyper3d_auth_mode = "MCP_OAUTH"
+        preferences.hyper3d_oauth_client = self.client
+        preferences.hyper3d_oauth_status = "AUTHORIZING"
+        self._timer = context.window_manager.event_timer_add(0.5, window=context.window)
+        context.window_manager.modal_handler_add(self)
+        self.report({"INFO"}, "请在浏览器中确认 Hyper3D 工作区与授权范围")
+        return {"RUNNING_MODAL"}
+
+    def modal(self, context, event):
+        if event.type == "ESC":
+            self._finish(context, cancelled=True)
+            return {"CANCELLED"}
+        if event.type != "TIMER" or self._process.poll() is None:
+            return {"PASS_THROUGH"}
+        return self._finish(context, cancelled=False)
+
+    def _finish(self, context, *, cancelled):
+        global _hyper3d_oauth_process
+        if self._timer is not None:
+            context.window_manager.event_timer_remove(self._timer)
+            self._timer = None
+        if cancelled and self._process is not None and self._process.poll() is None:
+            self._process.terminate()
+        preferences = _addon_preferences(context)
+        if cancelled:
+            preferences.hyper3d_oauth_status = "NOT_AUTHORIZED"
+            message = "已取消 Hyper3D OAuth 授权"
+        else:
+            from .hyper3d_auth import find_client, inspect_client
+            executable = find_client(self.client)
+            try:
+                status = inspect_client(self.client, executable) if executable else {
+                    "state": "missing", "statusText": "客户端不可用"}
+            except (OSError, subprocess.SubprocessError):
+                status = {"state": "error", "statusText": "无法检测客户端授权状态"}
+            authorized = self._process.returncode == 0 and status["state"] == "authorized"
+            preferences.hyper3d_oauth_status = "AUTHORIZED" if authorized else "ERROR"
+            message = "Hyper3D OAuth 已授权" if authorized else status["statusText"]
+        _hyper3d_oauth_process = None
+        bpy.ops.wm.save_userpref()
+        from .harness.provider_registry import get_provider_registry
+        get_provider_registry().refresh(context)
+        for area in context.screen.areas:
+            if area.type == "VIEW_3D":
+                area.tag_redraw()
+        self.report({"INFO" if preferences.hyper3d_oauth_status == "AUTHORIZED" else "WARNING"}, message)
+        return {"FINISHED" if preferences.hyper3d_oauth_status == "AUTHORIZED" else "CANCELLED"}
+
+
 class PARTMEBLENDER_OT_provider_settings(bpy.types.Operator):
     bl_idname = "partme_blender.provider_settings"
     bl_label = "配置供应商"
     provider_id: bpy.props.StringProperty()
+    enable_after_save: bpy.props.BoolProperty(default=False, options={"HIDDEN", "SKIP_SAVE"})
     api_key: bpy.props.StringProperty(name="API Key", subtype="PASSWORD")
+    hyper3d_auth_mode: bpy.props.EnumProperty(name="授权方式", items=(
+        ("MCP_OAUTH", "客户端 OAuth（推荐）", "免费账户通过浏览器授权，不向 Blender 提供 Token"),
+        ("API_KEY", "API Key", "使用 Hyper3D 或 fal.ai 开发者 API Key"),
+    ))
+    oauth_client: bpy.props.EnumProperty(name="授权客户端", items=(
+        ("CODEX", "Codex", ""), ("CLAUDE", "Claude Code", ""),
+    ))
     hyper3d_mode: bpy.props.EnumProperty(
         name="平台", items=(("MAIN_SITE", "hyper3d.ai", "hyper3d.ai"), ("FAL_AI", "fal.ai", "fal.ai")),
     )
@@ -416,33 +606,33 @@ class PARTMEBLENDER_OT_provider_settings(bpy.types.Operator):
     api_url: bpy.props.StringProperty(name="API URL")
     international_pro: bpy.props.BoolProperty(name="国际站 Pro 账户")
 
-    @staticmethod
-    def _community_preferences(context):
-        addon = getattr(getattr(context, "preferences", None), "addons", {}).get("blender_mcp_community")
-        return getattr(addon, "preferences", None)
+    def _provider_preferences(self, context):
+        return _addon_preferences(context)
 
     def invoke(self, context, _event):
         preferences = _addon_preferences(context)
-        community = self._community_preferences(context)
-        scene = context.scene
+        community = self._provider_preferences(context)
         if self.provider_id == "polypizza" and preferences is not None:
             self.api_key = preferences.polypizza_api_key
         elif self.provider_id == "sketchfab" and community is not None:
             self.api_key = community.sketchfab_api_key
         elif self.provider_id == "hyper3d" and community is not None:
             self.api_key = community.hyper3d_api_key
-            self.hyper3d_mode = scene.blendermcp_hyper3d_mode
+            self.hyper3d_mode = community.hyper3d_mode
+            self.hyper3d_auth_mode = community.hyper3d_auth_mode
+            self.oauth_client = community.hyper3d_oauth_client
         elif self.provider_id == "hunyuan3d" and community is not None:
-            self.hunyuan3d_mode = scene.blendermcp_hunyuan3d_mode
+            self.hunyuan3d_mode = community.hunyuan3d_mode
             self.secret_id = community.hunyuan3d_secret_id
             self.secret_key = community.hunyuan3d_secret_key
             self.api_url = community.hunyuan3d_api_url
-            self.international_pro = scene.blendermcp_hunyuan3d_intl_pro
+            self.international_pro = community.hunyuan3d_intl_pro
         else:
             self.report({"WARNING"}, "供应商配置不可用；请确认对应 Add-on 已启用")
             return {"CANCELLED"}
         return context.window_manager.invoke_props_dialog(
-            self, width=420, title="供应商配置", confirm_text="保存",
+            self, width=420, title="供应商配置",
+            confirm_text="保存并启用" if self.enable_after_save else "保存",
         )
 
     def draw(self, _context):
@@ -456,8 +646,22 @@ class PARTMEBLENDER_OT_provider_settings(bpy.types.Operator):
         if self.provider_id in {"polypizza", "sketchfab"}:
             layout.prop(self, "api_key")
         elif self.provider_id == "hyper3d":
-            layout.prop(self, "hyper3d_mode")
-            layout.prop(self, "api_key")
+            layout.prop(self, "hyper3d_auth_mode")
+            if self.hyper3d_auth_mode == "MCP_OAUTH":
+                layout.prop(self, "oauth_client")
+                layout.label(text="https://api.hyper3d.com/api/mcp", icon="URL")
+                status = _addon_preferences(bpy.context).hyper3d_oauth_status
+                layout.label(text={"AUTHORIZED": "客户端 OAuth 已授权",
+                                   "AUTHORIZING": "等待浏览器授权",
+                                   "ERROR": "授权失败，请重试"}.get(status, "尚未授权"),
+                             icon="CHECKMARK" if status == "AUTHORIZED" else "INFO")
+                action = layout.operator(PARTMEBLENDER_OT_hyper3d_oauth.bl_idname,
+                                         text="重新授权" if status == "AUTHORIZED" else "浏览器授权",
+                                         icon="URL")
+                action.client = self.oauth_client
+            else:
+                layout.prop(self, "hyper3d_mode")
+                layout.prop(self, "api_key")
         elif self.provider_id == "hunyuan3d":
             layout.prop(self, "hunyuan3d_mode")
             if self.hunyuan3d_mode == "OFFICIAL_API":
@@ -466,30 +670,46 @@ class PARTMEBLENDER_OT_provider_settings(bpy.types.Operator):
                 layout.prop(self, "international_pro")
             else:
                 layout.prop(self, "api_url")
-        layout.label(text="凭证仅保存在本机 Blender 用户配置中", icon="INFO")
+        if self.provider_id != "hyper3d" or self.hyper3d_auth_mode == "API_KEY":
+            layout.label(text="凭证仅保存在本机 Blender 用户配置中", icon="INFO")
+        else:
+            layout.label(text="OAuth Token 由客户端保管，不写入 Blender", icon="LOCKED")
 
     def execute(self, context):
         preferences = _addon_preferences(context)
-        community = self._community_preferences(context)
-        scene = context.scene
+        community = self._provider_preferences(context)
         if self.provider_id == "polypizza" and preferences is not None:
             preferences.polypizza_api_key = self.api_key.strip()
         elif self.provider_id == "sketchfab" and community is not None:
             community.sketchfab_api_key = self.api_key.strip()
         elif self.provider_id == "hyper3d" and community is not None:
-            scene.blendermcp_hyper3d_mode = self.hyper3d_mode
+            community.hyper3d_auth_mode = self.hyper3d_auth_mode
+            community.hyper3d_oauth_client = self.oauth_client
+            community.hyper3d_mode = self.hyper3d_mode
             community.hyper3d_api_key = self.api_key.strip()
         elif self.provider_id == "hunyuan3d" and community is not None:
-            scene.blendermcp_hunyuan3d_mode = self.hunyuan3d_mode
+            community.hunyuan3d_mode = self.hunyuan3d_mode
             community.hunyuan3d_secret_id = self.secret_id.strip()
             community.hunyuan3d_secret_key = self.secret_key.strip()
             community.hunyuan3d_api_url = self.api_url.strip()
-            scene.blendermcp_hunyuan3d_intl_pro = self.international_pro
+            community.hunyuan3d_intl_pro = self.international_pro
         else:
             self.report({"WARNING"}, "供应商配置不可用")
             return {"CANCELLED"}
         from .harness.provider_registry import get_provider_registry
-        snapshot = get_provider_registry().refresh(context)
+        registry = get_provider_registry()
+        snapshot = registry.refresh(context)
+        provider = next(row for row in snapshot["providers"] if row["providerId"] == self.provider_id)
+        if self.enable_after_save and provider["state"] != "configuration_required":
+            from .harness.provider_registry import ProviderRegistryError
+            try:
+                registry.set_enabled(self.provider_id, True, context=context)
+            except ProviderRegistryError as exc:
+                self.report({"WARNING"}, str(exc))
+                return {"CANCELLED"}
+            _save_enabled_preference(context, self.provider_id, True)
+            snapshot = registry.refresh(context)
+        bpy.ops.wm.save_userpref()
         provider = next(row for row in snapshot["providers"] if row["providerId"] == self.provider_id)
         self.report({"INFO"}, f"{provider['label']}：{provider['statusText']}")
         return {"FINISHED"}
@@ -635,10 +855,30 @@ class PARTMEBLENDER_OT_configure_remote_token(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class PARTMEBLENDER_OT_copy_remote_token(bpy.types.Operator):
+    bl_idname = "partme_blender.copy_remote_token"
+    bl_label = "复制 Token"
+    bl_description = "复制当前 Bearer Token 到剪贴板，不更换凭证或中断连接；请勿分享剪贴板内容"
+
+    @classmethod
+    def poll(cls, context):
+        preferences = _addon_preferences(context)
+        return preferences is not None and bool(preferences.remote_token)
+
+    def execute(self, context):
+        preferences = _addon_preferences(context)
+        if preferences is None or not preferences.remote_token:
+            self.report({"WARNING"}, "请先配置或生成 Token")
+            return {"CANCELLED"}
+        context.window_manager.clipboard = preferences.remote_token
+        self.report({"INFO"}, "Token 已复制到剪贴板，请妥善保管")
+        return {"FINISHED"}
+
+
 class PARTMEBLENDER_OT_generate_remote_token(bpy.types.Operator):
     bl_idname = "partme_blender.generate_remote_token"
     bl_label = "生成新 Token"
-    bl_description = "生成强随机 Bearer Token 并仅在本次操作后复制到剪贴板"
+    bl_description = "生成强随机 Bearer Token 并复制到剪贴板；轮换前须关闭 HTTP/SSE"
 
     def invoke(self, context, event):
         return context.window_manager.invoke_confirm(self, event)
@@ -704,7 +944,7 @@ class PARTMEBLENDER_OT_toggle_remote(bpy.types.Operator):
             return {"CANCELLED"}
         try:
             if self.enabled:
-                manager().start(preferences, self.transport)
+                manager().start(preferences, self.transport, descriptor_path=runtime.current().descriptor_path)
             else:
                 manager().stop(preferences, self.transport)
         except Exception as exc:
@@ -783,53 +1023,22 @@ def _draw_provider_rows(layout, context, category):
     if not providers:
         layout.label(text="没有已注册的供应商", icon="INFO")
         return
-    compact = getattr(context.region, "width", _COMPACT_REGION_WIDTH) < _COMPACT_REGION_WIDTH
+    compact = _sidebar_width(context) < _COMPACT_REGION_WIDTH
     for provider in providers:
         box = layout.box()
         task = provider.get("task")
         active = task is not None and task["active"]
         row = box.row(align=True)
         row.scale_y = 1.35
-        if category == "ai_model":
-            # Keep the model identity, configuration action and enable control in
-            # one restrained header. Status and task details remain on their own
-            # lines so a narrow N-panel never turns the controls into two wide,
-            # visually dominant buttons.
-            row.label(text=provider["label"], icon=_PROVIDER_ICONS.get(provider["providerId"], "PLUGIN"))
-            status = box.row(align=True)
-            actions = row.row(align=True)
-        elif compact and provider["configurable"]:
-            identity = row.row(align=True)
-            identity.label(text=provider["label"], icon=_PROVIDER_ICONS.get(provider["providerId"], "PLUGIN"))
-            status = identity.row(align=True)
-            actions = box.row(align=True)
-        else:
-            row.label(text=provider["label"], icon=_PROVIDER_ICONS.get(provider["providerId"], "PLUGIN"))
-            status = row.row(align=True)
-            actions = row.row(align=True)
-        status.alert = provider["state"] == "error"
-        status_text = provider["statusText"]
-        if active and task.get("progress") is not None:
-            status_text += f"  {task['progress']:.0%}"
-        status.label(text=status_text, icon_value=_status_icon_value(provider["state"]))
-        if provider["configurable"] and not active:
-            settings = actions.row(align=True)
-            compact_settings = (
-                category == "ai_model" or
-                (category == "asset_library" and provider["providerId"] == "polypizza")
-            )
-            action = settings.operator(
-                PARTMEBLENDER_OT_provider_settings.bl_idname,
-                text="" if compact_settings else "配置",
-                icon="PREFERENCES" if compact_settings else "NONE",
-                emboss=not compact_settings,
-            )
-            action.provider_id = provider["providerId"]
+        # 社区式单行：左侧勾选框，名称占主体，右侧仅状态和配置。
+        toggle = row.row(align=True)
+        toggle.alignment = "LEFT"
+        toggle.ui_units_x = 1.2
+        toggle.enabled = provider["mutable"] and not active and (
+            not provider["toggleLocked"] or
+            (provider["configurable"] and provider["state"] == "configuration_required")
+        )
         if provider["mutable"]:
-            if active:
-                actions.label(text="", icon="LOCKED")
-            toggle = actions.row(align=True)
-            toggle.enabled = not provider["toggleLocked"]
             action = toggle.operator(
                 PARTMEBLENDER_OT_set_provider_enabled.bl_idname,
                 text="",
@@ -840,13 +1049,26 @@ def _draw_provider_rows(layout, context, category):
             action.provider_id = provider["providerId"]
             action.enabled = not provider["enabled"]
         else:
-            actions.label(text="始终启用", icon="LOCKED")
+            toggle.label(text="", icon="CHECKBOX_HLT")
+        row.label(text=provider["label"], icon=_PROVIDER_ICONS.get(provider["providerId"], "PLUGIN"))
+        actions = _small_actions(row, 2.4 if provider["configurable"] and not active else 1.2)
+        actions.label(text="", icon_value=_status_icon_value(provider["state"]))
+        if provider["configurable"] and not active:
+            action = actions.operator(
+                PARTMEBLENDER_OT_provider_settings.bl_idname,
+                text="", icon="PREFERENCES", emboss=False,
+            )
+            action.provider_id = provider["providerId"]
+        if provider["state"] in {"configuration_required", "error", "unavailable"}:
+            detail = box.column(align=True)
+            detail.alert = provider["state"] == "error"
+            _wrapped_label(detail, context, provider["statusText"])
         if active:
             _draw_progress(box, task.get("progress"), task.get("stage") or "处理中")
             task_row = box.row(align=True)
-            task_row.label(text=task.get("stage") or "自动生成 · 正在处理")
+            _wrapped_label(task_row, context, task.get("stage") or "自动生成 · 正在处理")
             if "cancel" in provider["actions"]:
-                cancel = task_row.row(align=True)
+                cancel = _small_actions(box.row(align=True) if compact else task_row, 5.0)
                 cancel.alert = True
                 action = cancel.operator(
                     PARTMEBLENDER_OT_cancel_provider_task.bl_idname,
@@ -859,7 +1081,20 @@ def _draw_provider_rows(layout, context, category):
             info = box.row()
             info.alert = task["state"] == "failed"
             icon = "CHECKMARK" if task["state"] == "completed" else "INFO"
-            info.label(text=task.get("message") or task.get("statusText") or "任务已结束", icon=icon)
+            _wrapped_label(info, context, task.get("message") or task.get("statusText") or "任务已结束", icon=icon)
+
+
+def _draw_view_shortcuts(layout):
+    """四个统一外框；上下无边框操作区共享视角，避免八块按钮。"""
+    row = layout.row(align=False)
+    for name, label, icon in (
+        ("CAMERA", "相机", "CAMERA_DATA"), ("FRONT", "正面", "AXIS_FRONT"),
+        ("SIDE", "侧面", "AXIS_SIDE"), ("TOP", "顶面", "AXIS_TOP"),
+    ):
+        tile = row.box().column(align=True)
+        tile.scale_y = 1.3
+        tile.operator("partme_blender.change_view", text="", icon=icon, emboss=False).view = name
+        tile.operator("partme_blender.change_view", text=label, emboss=False).view = name
 
 
 def _draw_work_tab(layout, context, handle):
@@ -879,25 +1114,21 @@ def _draw_work_tab(layout, context, handle):
     )
     progress = active_task.get("progress") if active_task is not None else status.get("progress")
     box = layout.box()
-    compact = getattr(context.region, "width", _COMPACT_REGION_WIDTH) < _COMPACT_REGION_WIDTH
-    if compact:
-        box.label(text="会话 ID")
-        row = box.row(align=True)
-    else:
-        row = box.row(align=True)
-        row.label(text="会话 ID")
-    value = row.box().row(align=True)
+    row = box.row(align=True)
+    row.label(text="会话 ID")
+    value = row.row(align=True)
     value.label(text=status["sessionId"][:20] + ("…" if len(status["sessionId"]) > 20 else ""))
-    value.operator(PARTMEBLENDER_OT_copy_session_id.bl_idname, text="", icon="COPYDOWN")
+    _small_actions(value, 1.2).operator(PARTMEBLENDER_OT_copy_session_id.bl_idname, text="", icon="COPYDOWN", emboss=False)
     row = box.row(align=True)
     row.label(text="阶段")
-    row.box().label(text=phase)
+    row.label(text=phase)
     row = box.row(align=True)
     row.label(text="等待操作")
     row.label(text=str(getattr(handle.executor, "pending_count", 0)))
-    _draw_progress(box, progress, active_task.get("stage") if active_task is not None else status.get("stage") or "制作中")
-    _draw_approvals(layout, handle)
-    row = layout.row(align=True)
+    if progress is not None:
+        _draw_progress(box, progress, phase)
+    _draw_approvals(box, handle)
+    row = box.row(align=True)
     row.scale_y = 1.35
     if status["paused"]:
         row.operator("partme_blender.resume_work", text="恢复制作", icon="PLAY")
@@ -906,21 +1137,13 @@ def _draw_work_tab(layout, context, handle):
     row.operator(PARTMEBLENDER_OT_revoke.bl_idname, text="撤销会话", icon="CANCEL")
     layout.separator()
     layout.label(text="⚡  快捷操作")
-    row = layout.row(align=True)
-    row.scale_y = 1.5
-    for name, label, icon in (
-        ("CAMERA", "相机", "CAMERA_DATA"), ("FRONT", "正面", "AXIS_FRONT"),
-        ("SIDE", "侧面", "AXIS_SIDE"), ("TOP", "顶面", "AXIS_TOP"),
-    ):
-        row.operator("partme_blender.change_view", text=label, icon=icon).view = name
-    row = layout.row(align=True)
-    row.scale_y = 1.25
-    row.operator("partme_blender.play_work", text="播放 / 暂停动画", icon="PLAY")
-    if compact:
-        frame = layout.row(align=True)
-        frame.prop(context.scene, "frame_current", text="当前帧")
-    else:
-        row.prop(context.scene, "frame_current", text="当前帧")
+    _draw_view_shortcuts(layout)
+    playback = layout.row(align=True)
+    playback.scale_y = 1.25
+    playing = bool(context.screen and context.screen.is_animation_playing)
+    playback.operator("partme_blender.play_work", text="暂停动画" if playing else "播放动画",
+                      icon="PAUSE" if playing else "PLAY", depress=playing)
+    playback.prop(context.scene, "frame_current", text="帧")
 
 
 def _draw_remote_transport(layout, preferences, transport, label, *, service_running):
@@ -928,18 +1151,21 @@ def _draw_remote_transport(layout, preferences, transport, label, *, service_run
     snapshot = manager().snapshot(preferences, transport)
     box = layout.box()
     row = box.row(align=True)
-    row.label(text=label, icon="NETWORK_DRIVE" if transport == "streamable-http" else "URL")
     toggle_row = row.row(align=True)
+    toggle_row.alignment = "LEFT"
+    toggle_row.ui_units_x = 1.2
     toggle_row.enabled = ((service_running or snapshot["running"])
                           and snapshot["state"] != "configuration_required")
     toggle = toggle_row.operator(
         PARTMEBLENDER_OT_toggle_remote.bl_idname,
-        text="关" if snapshot["running"] else "开",
+        text="",
         icon="CHECKBOX_HLT" if snapshot["running"] else "CHECKBOX_DEHLT",
         depress=snapshot["running"],
+        emboss=False,
     )
     toggle.transport = transport
     toggle.enabled = not snapshot["running"]
+    row.label(text=label, icon="NETWORK_DRIVE" if transport == "streamable-http" else "URL")
     state = box.row()
     state.alert = snapshot["state"] == "error"
     status_text = snapshot["statusText"]
@@ -947,20 +1173,32 @@ def _draw_remote_transport(layout, preferences, transport, label, *, service_run
         status_text += f" · 客户端 {snapshot['clients']}"
     state.label(text=status_text, icon_value=_status_icon_value(snapshot["state"]))
     if snapshot["state"] == "running":
-        box.label(text=snapshot["address"])
-        action = box.operator(PARTMEBLENDER_OT_copy_remote_address.bl_idname, text="复制地址", icon="COPYDOWN")
+        address = box.row(align=True)
+        address.label(text=snapshot["address"])
+        # 为两个汉字及按钮内边距预留宽度，不再用固定 10% 裁切操作文字。
+        action = _small_actions(address, units=3.0).operator(
+            PARTMEBLENDER_OT_copy_remote_address.bl_idname, text="复制")
         action.transport = transport
-    elif snapshot["message"]:
-        box.label(text=snapshot["message"][:120], icon="INFO")
+    elif snapshot["state"] in {"error", "configuration_required"} and snapshot["message"]:
+        _wrapped_label(box, bpy.context, snapshot["message"], icon="INFO")
         if snapshot["state"] == "configuration_required":
             box.operator(PARTMEBLENDER_OT_remote_settings.bl_idname, text="配置", icon="PREFERENCES")
+    if snapshot.get("logPath"):
+        property_name = "partme_http_diagnostics" if transport == "streamable-http" else "partme_sse_diagnostics"
+        expanded = getattr(bpy.context.window_manager, property_name)
+        box.prop(bpy.context.window_manager, property_name, text="诊断详情", emboss=False,
+                 icon="TRIA_DOWN" if expanded else "TRIA_RIGHT")
+        if expanded:
+            detail = box.column()
+            action = detail.operator("wm.path_open", text="打开日志目录", icon="FILE_FOLDER")
+            action.filepath = str(Path(snapshot["logPath"]).parent)
+            _wrapped_label(detail, bpy.context, Path(snapshot["logPath"]).name)
 
 
 def _draw_access_tab(layout, context, running):
     from .remote import manager
     preferences = _addon_preferences(context)
     layout.label(text="本地 MCP", icon="CONSOLE")
-    layout.label(text="stdio 由本机智能体按需启动，无需开关", icon="INFO")
     box = layout.box()
     stdio = manager().stdio_snapshot()
     ready = running and stdio["state"] == "ready"
@@ -975,7 +1213,7 @@ def _draw_access_tab(layout, context, running):
             box.label(text="未安装官方 MCP SDK", icon="ERROR")
             box.operator(PARTMEBLENDER_OT_remote_settings.bl_idname, text="配置 MCP Python", icon="PREFERENCES")
         else:
-            box.label(text=message[:80], icon="INFO")
+            _wrapped_label(box, context, message, icon="INFO")
     layout.separator()
     layout.label(text="远程 MCP", icon="NETWORK_DRIVE")
     if preferences is None:
@@ -992,14 +1230,14 @@ def _draw_access_tab(layout, context, running):
     row.label(text="已配置" if configured else "未配置",
               icon_value=_status_icon_value("ready" if configured else "configuration_required"))
     row = auth.row(align=True)
-    row.operator(PARTMEBLENDER_OT_configure_remote_token.bl_idname, text="配置 Token", icon="PREFERENCES")
+    row.operator(PARTMEBLENDER_OT_configure_remote_token.bl_idname, text="配置 Token")
     row.operator(
         PARTMEBLENDER_OT_generate_remote_token.bl_idname,
         text="重新生成" if configured else "生成 Token",
-        icon="FILE_REFRESH",
     )
-    auth.label(text="非本机绑定必须鉴权；Token 不会写入复制地址", icon="INFO")
-    auth.label(text="生成后仅复制一次；轮换前须关闭 HTTP/SSE", icon="LOCKED")
+    row.operator(PARTMEBLENDER_OT_copy_remote_token.bl_idname, text="复制 Token")
+    auth.label(text="远程需鉴权，地址不含密钥", icon="INFO")
+    auth.label(text="更换密钥前关闭 HTTP/SSE", icon="LOCKED")
     layout.operator(PARTMEBLENDER_OT_remote_settings.bl_idname, text="完整远程设置", icon="PREFERENCES")
 
 
@@ -1042,12 +1280,12 @@ class VIEW3D_PT_partme_blender_mcp(bpy.types.Panel):
 
         box = layout.box()
         status_row = box.row()
-        status_row.scale_y = 1.35
+        status_row.scale_y = 1.15
         status_row.label(text="Blender 服务已就绪" if running else "Blender 服务未就绪",
                          icon_value=_status_icon_value("ready_check" if running else "disabled"))
         box.separator(factor=0.25)
         row = box.row(align=True)
-        row.scale_y = 1.15
+        row.scale_y = 1.0
         row.label(text=f"场景版本 {handle.session.scene_revision if running else 0}", icon="FILE")
         row.separator(factor=0.5)
         row.label(text=f"供应商可用 {summary['available']} / {summary['total']}", icon="ASSET_MANAGER")
@@ -1061,10 +1299,10 @@ class VIEW3D_PT_partme_blender_mcp(bpy.types.Panel):
         if attention:
             target, message, icon = attention
             notice = layout.box()
+            notice.alert = icon == "ERROR"
+            _wrapped_label(notice, context, message, icon=icon)
             row = notice.row(align=True)
-            row.alert = icon == "ERROR"
-            row.label(text=message, icon=icon)
-            action = row.operator(PARTMEBLENDER_OT_switch_tab.bl_idname, text="查看")
+            action = _small_actions(row, 3.0).operator(PARTMEBLENDER_OT_switch_tab.bl_idname, text="查看")
             action.tab = target
 
         # ``prop_tabs_enum`` collapses to only the active item in a narrow N-panel
@@ -1077,11 +1315,10 @@ class VIEW3D_PT_partme_blender_mcp(bpy.types.Panel):
         if tab == "WORK":
             _draw_work_tab(layout, context, handle if running else None)
         elif tab == "ASSETS":
-            layout.label(text="素材库", icon="ASSET_MANAGER")
-            layout.label(text="已启用供应商参与自动搜索，下载写入授权目录", icon="INFO")
+            layout.label(text="自动搜索，下载仅写授权目录", icon="INFO")
             _draw_provider_rows(layout, context, "asset_library")
         elif tab == "MODELS":
-            layout.label(text="已启用模型参与自动生成，任务可随时终止", icon="INFO")
+            _wrapped_label(layout, context, "勾选的模型参与自动生成；提交前仍需费用授权", icon="INFO")
             _draw_provider_rows(layout, context, "ai_model")
         else:
             _draw_access_tab(layout, context, running)
@@ -1095,12 +1332,14 @@ CLASSES = (
     PARTMEBLENDER_OT_deny_request,
     PARTMEBLENDER_OT_refresh_providers,
     PARTMEBLENDER_OT_set_provider_enabled,
+    PARTMEBLENDER_OT_hyper3d_oauth,
     PARTMEBLENDER_OT_provider_settings,
     PARTMEBLENDER_OT_cancel_provider_task,
     PARTMEBLENDER_OT_execution_settings,
     PARTMEBLENDER_OT_remote_settings,
     PARTMEBLENDER_OT_configure_remote_token,
     PARTMEBLENDER_OT_generate_remote_token,
+    PARTMEBLENDER_OT_copy_remote_token,
     PARTMEBLENDER_OT_switch_tab,
     PARTMEBLENDER_OT_refresh_access,
     PARTMEBLENDER_OT_toggle_remote,
@@ -1112,6 +1351,7 @@ CLASSES = (
 
 def register():
     global _provider_sync_attempts
+    _playback_snapshot.clear()
     _register_status_icons()
     bpy.types.Scene.partme_blender_execution_mode = bpy.props.EnumProperty(
         name="Execution Mode", default="auto_with_budget", items=_EXECUTION_MODES,
@@ -1131,15 +1371,22 @@ def register():
     bpy.types.WindowManager.partme_blender_ui_tab = bpy.props.EnumProperty(
         name="PartMe Blender MCP Tab", items=_TABS, default="WORK",
     )
+    bpy.types.WindowManager.partme_http_diagnostics = bpy.props.BoolProperty(default=False, options={"SKIP_SAVE"})
+    bpy.types.WindowManager.partme_sse_diagnostics = bpy.props.BoolProperty(default=False, options={"SKIP_SAVE"})
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     _provider_sync_attempts = 0
     if not bpy.app.timers.is_registered(_deferred_provider_sync):
         bpy.app.timers.register(_deferred_provider_sync, first_interval=0.1)
+    if not bpy.app.timers.is_registered(_refresh_playback_ui):
+        bpy.app.timers.register(_refresh_playback_ui, first_interval=0.1, persistent=True)
 
 
 def unregister():
     from .remote import manager
+    if bpy.app.timers.is_registered(_refresh_playback_ui):
+        bpy.app.timers.unregister(_refresh_playback_ui)
+    _playback_snapshot.clear()
     manager().shutdown()
     if bpy.app.timers.is_registered(_poll_remote_listeners):
         bpy.app.timers.unregister(_poll_remote_listeners)
@@ -1158,6 +1405,8 @@ def unregister():
         (bpy.types.Scene, "partme_blender_allow_proxies"),
         (bpy.types.Scene, "partme_blender_asset_strategy"),
         (bpy.types.WindowManager, "partme_blender_ui_tab"),
+        (bpy.types.WindowManager, "partme_http_diagnostics"),
+        (bpy.types.WindowManager, "partme_sse_diagnostics"),
     ):
         if hasattr(owner, name):
             delattr(owner, name)

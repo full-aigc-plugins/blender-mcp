@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
+import asyncio
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 
 @unittest.skipUnless(importlib.util.find_spec("mcp"), "official MCP SDK is not installed in this test interpreter")
@@ -91,6 +95,33 @@ class OfficialSdkServerTests(unittest.IsolatedAsyncioTestCase):
         ))
         self.assertEqual(config.sse_path, "/events")
         self.assertEqual(config.message_path, "/messages/")
+
+    async def test_streamable_http_client_count_tracks_live_get_stream(self):
+        from partme_blender_mcp.harness.sdk_server import ListenerStatusMiddleware, RemoteServerConfig
+
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def app(_scope, _receive, _send):
+            entered.set()
+            await release.wait()
+
+        with tempfile.TemporaryDirectory() as directory:
+            status_file = Path(directory) / "status.json"
+            config = RemoteServerConfig(
+                transport="streamable-http", host="127.0.0.1", port=9877,
+                status_file=str(status_file),
+            )
+            middleware = ListenerStatusMiddleware(app, config)
+            task = asyncio.create_task(middleware(
+                {"type": "http", "method": "GET", "path": "/mcp", "headers": []},
+                lambda: None, lambda _message: None,
+            ))
+            await entered.wait()
+            self.assertEqual(json.loads(status_file.read_text())["clients"], 1)
+            release.set()
+            await task
+            self.assertEqual(json.loads(status_file.read_text())["clients"], 0)
 
 
 if __name__ == "__main__":

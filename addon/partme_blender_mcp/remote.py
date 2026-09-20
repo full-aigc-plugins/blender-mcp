@@ -117,13 +117,20 @@ class RemoteListenerManager:
             host = "127.0.0.1"
         return f"{scheme}://{host}:{port}{path}"
 
-    def start(self, preferences, transport: str) -> dict:
+    def start(self, preferences, transport: str, *, descriptor_path: Path | None = None) -> dict:
         if transport not in _TRANSPORTS:
             raise ValueError("unknown remote transport")
         current = self._entries.get(transport)
         if current and _alive(current["process"]):
             return self.snapshot(preferences, transport)
         command, env, log_path, status_path = self._command(preferences, transport)
+        if descriptor_path is not None:
+            # 每个窗口的监听器固定连接该窗口，不能自动发现到其他 Blender 会话。
+            descriptor_path = Path(descriptor_path).resolve()
+            env["PARTME_BLENDER_DESCRIPTOR"] = str(descriptor_path)
+            log_path = descriptor_path.with_name(f"{descriptor_path.stem}-{transport}.log")
+            status_path = descriptor_path.with_name(f"{descriptor_path.stem}-{transport}-status.json")
+            command[command.index("--status-file") + 1] = str(status_path)
         log_path.parent.mkdir(parents=True, exist_ok=True)
         status_path.unlink(missing_ok=True)
         log_stream = log_path.open("ab", buffering=0)
@@ -167,16 +174,15 @@ class RemoteListenerManager:
                 if entry["state"] in {"stopped", "error"}:
                     continue
                 code = process.returncode
-                message = ""
-                try:
-                    message = entry["logPath"].read_text(encoding="utf-8", errors="replace")[-512:].strip()
-                except OSError:
-                    pass
                 if entry.get("log"):
                     entry["log"].close()
                 entry["log"] = None
                 entry["state"] = "stopped" if code == 0 or entry["state"] == "stopping" else "error"
-                entry["message"] = message or (f"监听器退出，代码 {code}" if code else "")
+                # 子进程日志不是用户提示；正常关闭必须清空摘要。
+                entry["message"] = (
+                    f"监听器异常退出（代码 {code}）；请查看诊断日志"
+                    if entry["state"] == "error" else ""
+                )
                 continue
             active = True
             port = preferences.http_port if transport == "streamable-http" else preferences.sse_port
@@ -223,6 +229,7 @@ class RemoteListenerManager:
             "address": self.address(preferences, transport),
             "clients": max(0, clients),
             "message": entry.get("message", "") if entry else configuration_message,
+            "logPath": str(entry["logPath"]) if entry else "",
             "pid": entry["process"].pid if entry and _alive(entry["process"]) else None,
         }
 

@@ -18,7 +18,7 @@ FORMAT_PARAMETERS = {
     'blend': set(), 'png': set(), 'jpg': set(),
     'glb': {'use_selection','use_visible','use_renderable','export_apply','export_animations','export_materials'},
     'gltf': {'use_selection','use_visible','use_renderable','export_apply','export_animations','export_materials'},
-    'fbx': {'use_selection','use_visible','use_active_collection','bake_anim','apply_scale_options'},
+    'fbx': {'use_selection','use_visible','use_active_collection','bake_anim','apply_scale_options','use_mesh_modifiers'},
     'obj': {'export_selected_objects','apply_modifiers','export_materials','export_uv'},
     'stl': {'export_selected_objects','apply_modifiers','global_scale'},
     'mp4': {'frameStart','frameEnd'},

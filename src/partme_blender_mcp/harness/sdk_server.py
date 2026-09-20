@@ -304,7 +304,7 @@ class ListenerStatusMiddleware:
     def __init__(self, app, config: RemoteServerConfig):
         self.app = app
         self.config = config
-        self.sessions = set()
+        self.http_clients = 0
         self.sse_clients = 0
 
     def _write(self, state: str = "running") -> None:
@@ -315,7 +315,7 @@ class ListenerStatusMiddleware:
         payload = {
             "state": state,
             "transport": self.config.transport,
-            "clients": len(self.sessions) if self.config.transport == "streamable-http" else self.sse_clients,
+            "clients": self.http_clients if self.config.transport == "streamable-http" else self.sse_clients,
             "pid": os.getpid(),
         }
         temporary = target.with_suffix(target.suffix + ".tmp")
@@ -334,6 +334,20 @@ class ListenerStatusMiddleware:
 
         path = scope.get("path", "")
         method = scope.get("method", "")
+        if (self.config.transport == "streamable-http" and method == "GET"
+                and path == self.config.streamable_http_path):
+            # The official client keeps one GET stream open for the lifetime of
+            # a connected session. Count that live stream instead of issued
+            # session IDs: session IDs otherwise remain stale when a client
+            # disconnects unexpectedly or its DELETE arrives concurrently.
+            self.http_clients += 1
+            self._write()
+            try:
+                return await self.app(scope, receive, send)
+            finally:
+                self.http_clients = max(0, self.http_clients - 1)
+                self._write()
+
         if self.config.transport == "sse" and method == "GET" and path == self.config.sse_path:
             self.sse_clients += 1
             self._write()
@@ -343,32 +357,7 @@ class ListenerStatusMiddleware:
                 self.sse_clients = max(0, self.sse_clients - 1)
                 self._write()
 
-        request_session = None
-        for key, value in scope.get("headers", []):
-            if key.lower() == b"mcp-session-id":
-                request_session = value.decode("latin-1")
-                break
-        response_session = None
-
-        async def tracking_send(message):
-            nonlocal response_session
-            if message["type"] == "http.response.start":
-                for key, value in message.get("headers", []):
-                    if key.lower() == b"mcp-session-id":
-                        response_session = value.decode("latin-1")
-                        break
-            await send(message)
-
-        await self.app(scope, receive, tracking_send)
-        changed = False
-        if response_session and response_session not in self.sessions:
-            self.sessions.add(response_session)
-            changed = True
-        if method == "DELETE" and request_session in self.sessions:
-            self.sessions.discard(request_session)
-            changed = True
-        if changed:
-            self._write()
+        await self.app(scope, receive, send)
 
 
 def serve_remote(adapter, config: RemoteServerConfig) -> int:

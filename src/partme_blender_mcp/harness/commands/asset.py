@@ -8,6 +8,62 @@ from ..identity import ObjectResolver
 class AssetCommands:
     def __init__(self, bpy_module, asset_policy=None):
         self.bpy=bpy_module; self.policy=asset_policy; self.objects=ObjectResolver(bpy_module)
+        from ..asset_transfers import AssetTransferRunner
+        from ..provider_tasks import get_provider_task_registry
+        self.transfers=AssetTransferRunner(get_provider_task_registry())
+
+    @staticmethod
+    def _check_cancelled(cancelled):
+        if cancelled():
+            raise HarnessError('PROVIDER_TASK_CANCELLED', '素材操作已在本地终止')
+
+    def close(self):
+        self.transfers.close()
+
+    def operation_result(self, arguments):
+        try:
+            result=self.transfers.result(arguments['providerId'], arguments['taskId'])
+        except ValueError as exc:
+            raise HarnessError('PROVIDER_RESULT_UNAVAILABLE','素材任务不存在或结果不可用') from exc
+        return {'changedObjects':[],'result':result}
+
+    def _submit(self, provider_id, callback, *, state='downloading', stage='正在下载'):
+        try:
+            task=self.transfers.submit(provider_id,callback,state=state,stage=stage)
+        except RuntimeError as exc:
+            raise HarnessError('PROVIDER_BUSY','素材任务队列已满，请稍后再试') from exc
+        return {'changedObjects':[],'result':{'accepted':True,'operationId':task['taskId'],'task':task}}
+
+    def polypizza_search_async(self, arguments):
+        captured=dict(arguments)
+        self._require_provider('polypizza')
+        return self._submit('polypizza',lambda cancelled:self.polypizza_search(
+            captured,cancelled=cancelled)['result'],state='querying',stage='正在搜索')
+
+    def polypizza_download_async(self, arguments):
+        captured=dict(arguments)
+        self._require_provider('polypizza')
+        return self._submit('polypizza',lambda cancelled:self.polypizza_download(
+            captured,cancelled=cancelled)['result'])
+
+    def fetch_url_async(self, arguments):
+        captured=dict(arguments)
+        self._require_provider('polyhaven')
+        return self._submit('polyhaven',lambda cancelled:self.fetch_url(
+            captured,cancelled=cancelled)['result'])
+
+    def fetch_generated_async(self, arguments):
+        captured=dict(arguments)
+        provider_id=captured.get('providerId')
+        self._require_provider(provider_id)
+        resolver=None
+        if 'params' in captured:
+            if self.policy is None:
+                raise HarnessError('ASSET_NOT_AUTHORIZED','no asset root was approved')
+            from partme_blender_mcp.provider_engine import capture_asset_resolver
+            resolver=capture_asset_resolver(provider_id,captured['params'])
+        return self._submit(provider_id,lambda cancelled:self.fetch_generated(
+            captured,cancelled=cancelled,resolver=resolver)['result'])
 
     def _path(self, value):
         if self.policy is None: raise HarnessError('ASSET_NOT_AUTHORIZED','no asset root was approved')
@@ -99,7 +155,7 @@ class AssetCommands:
         except HarnessError: raise
         except Exception as exc: raise HarnessError('DOWNLOAD_FAILED','Poly Pizza API request did not finish') from exc
 
-    def polypizza_search(self,arguments):
+    def polypizza_search(self,arguments,*,cancelled=lambda:False):
         """Search Poly Pizza without modifying the scene."""
         from urllib.parse import quote
         self._require_provider('polypizza')
@@ -114,7 +170,9 @@ class AssetCommands:
         if isinstance(licence,str) and licence:
             params.append('License=1' if licence=='CC0' else 'License=0')
         path='/search/'+quote(str(query),safe='') if query else '/search'
+        self._check_cancelled(cancelled)
         data=self._polypizza_fetch_json(path+'?'+'&'.join(params))
+        self._check_cancelled(cancelled)
         models=[]
         for item in data.get('results',[]) if isinstance(data,dict) else []:
             creator=item.get('Creator') or {}
@@ -125,7 +183,7 @@ class AssetCommands:
         return {'changedObjects':[],'result':{'total':data.get('total',len(models)) if isinstance(data,dict) else 0,
                                               'models':models}}
 
-    def polypizza_download(self,arguments):
+    def polypizza_download(self,arguments,*,cancelled=lambda:False):
         """Download into an approved asset root; import remains a separate transaction."""
         import json
         import urllib.request
@@ -134,7 +192,9 @@ class AssetCommands:
         model_id=arguments.get('modelId')
         if not isinstance(model_id,str) or not model_id.strip():
             raise HarnessError('INVALID_ARGUMENT','modelId is required')
+        self._check_cancelled(cancelled)
         detail=self._polypizza_fetch_json('/model/'+quote(model_id.strip(),safe=''))
+        self._check_cancelled(cancelled)
         if not isinstance(detail,dict) or not detail.get('Download'):
             raise HarnessError('ASSET_NOT_FOUND',f'no downloadable file for model: {model_id}')
         download_url=str(detail['Download'])
@@ -156,6 +216,7 @@ class AssetCommands:
             with urllib.request.urlopen(download_url,timeout=180) as response:
                 with partial.open('wb') as sink:
                     while True:
+                        self._check_cancelled(cancelled)
                         chunk=response.read(1024*256)
                         if not chunk: break
                         downloaded+=len(chunk)
@@ -167,6 +228,7 @@ class AssetCommands:
         except Exception as exc:
             partial.unlink(missing_ok=True)
             raise HarnessError('DOWNLOAD_FAILED','Poly Pizza model download did not finish') from exc
+        self._check_cancelled(cancelled)
         partial.replace(target)
         sidecar=subdir/'license.json'
         sidecar.write_text(json.dumps({'attribution':attribution,'title':detail.get('Title'),
@@ -176,7 +238,7 @@ class AssetCommands:
         return {'changedObjects':[],'result':{'path':str(target),'bytes':downloaded,'licence':licence,
                                               'attribution':attribution,'sidecar':str(sidecar)}}
 
-    def fetch_url(self,arguments):
+    def fetch_url(self,arguments,*,cancelled=lambda:False):
         """Download from an allowlisted host into an approved asset root."""
         import urllib.request
         from urllib.parse import urlparse
@@ -206,12 +268,14 @@ class AssetCommands:
         partial=target.with_name(target.name+'.part')
         downloaded=0
         try:
+            self._check_cancelled(cancelled)
             with urllib.request.urlopen(url,timeout=120) as response:
                 total=response.headers.get('Content-Length')
                 if total and int(total)>self.FETCH_MAX_BYTES:
                     raise HarnessError('INVALID_ARGUMENT',f'asset exceeds the {self.FETCH_MAX_BYTES//1024//1024}MB download cap')
                 with partial.open('wb') as sink:
                     while True:
+                        self._check_cancelled(cancelled)
                         chunk=response.read(1024*256)
                         if not chunk: break
                         downloaded+=len(chunk)
@@ -223,14 +287,34 @@ class AssetCommands:
         except Exception as exc:
             partial.unlink(missing_ok=True)
             raise HarnessError('DOWNLOAD_FAILED',f'asset download did not finish: {parsed.hostname}') from exc
+        self._check_cancelled(cancelled)
         partial.replace(target)
         return {'changedObjects':[],'result':{'path':str(target),'bytes':downloaded,'cached':False}}
 
-    def fetch_generated(self,arguments):
+    def fetch_generated(self,arguments,*,cancelled=lambda:False,resolver=None):
         """Stage an approved provider result; scene import remains a separate transaction."""
         import re
         import urllib.request
         from urllib.parse import urlparse
+        if 'params' in arguments:
+            if 'url' in arguments or 'filename' in arguments or not isinstance(arguments['params'], dict):
+                raise HarnessError('INVALID_ARGUMENT', 'provider params cannot be combined with url or filename')
+            if self.policy is None:
+                raise HarnessError('ASSET_NOT_AUTHORIZED', 'no asset root was approved')
+            self._require_provider(arguments.get('providerId'))
+            self._check_cancelled(cancelled)
+            if resolver is None:
+                from partme_blender_mcp.provider_engine import resolve_asset
+                resolved = resolve_asset(arguments['providerId'], arguments['params'])
+            else:
+                resolved = resolver()
+            self._check_cancelled(cancelled)
+            if 'path' in resolved:
+                # 本地 /generate 直接返回二进制；已由后台服务暂存，再核对当前授权根。
+                target = self.policy.require_file(resolved['path'])
+                return {'changedObjects': [], 'result': {'path': str(target), 'bytes': target.stat().st_size,
+                    'providerId': arguments['providerId'], 'cached': True, 'sourceHost': 'local-generation'}}
+            arguments = {'providerId': arguments['providerId'], **resolved}
         url=arguments.get('url'); provider_id=arguments.get('providerId')
         if not isinstance(url,str) or not url:
             raise HarnessError('INVALID_ARGUMENT','url is required')
@@ -258,6 +342,7 @@ class AssetCommands:
         partial=target.with_name(target.name+'.part')
         downloaded=0
         try:
+            self._check_cancelled(cancelled)
             with urllib.request.urlopen(url,timeout=300) as response:
                 final=urlparse(response.geturl())
                 if final.scheme!='https':
@@ -267,6 +352,7 @@ class AssetCommands:
                     raise HarnessError('INVALID_ARGUMENT','generated asset exceeds the 500MB download cap')
                 with partial.open('wb') as sink:
                     while True:
+                        self._check_cancelled(cancelled)
                         chunk=response.read(1024*256)
                         if not chunk: break
                         downloaded+=len(chunk)
@@ -278,14 +364,20 @@ class AssetCommands:
         except Exception as exc:
             partial.unlink(missing_ok=True)
             raise HarnessError('DOWNLOAD_FAILED',f'generated asset download did not finish: {parsed.hostname}') from exc
+        self._check_cancelled(cancelled)
         partial.replace(target)
         result_path=target
         extracted=[]
         if suffix=='.zip':
+            import shutil
             import stat
+            import tempfile
             import zipfile
-            destination=subdir/target.stem
-            destination.mkdir(parents=True,exist_ok=True)
+            temporary=Path(tempfile.mkdtemp(prefix=target.stem+'.extract-',dir=subdir))
+            destination=subdir/(target.stem+'-contents')
+            if destination.exists():
+                destination=Path(tempfile.mkdtemp(prefix=target.stem+'-contents-',dir=subdir))
+                destination.rmdir()
             total_uncompressed=0
             try:
                 with zipfile.ZipFile(target) as archive:
@@ -293,6 +385,7 @@ class AssetCommands:
                     if len(entries)>4096:
                         raise HarnessError('INVALID_ARGUMENT','generated archive contains too many files')
                     for entry in entries:
+                        self._check_cancelled(cancelled)
                         relative=Path(entry.filename)
                         if relative.is_absolute() or '..' in relative.parts:
                             raise HarnessError('ASSET_NOT_AUTHORIZED','generated archive contains an unsafe path')
@@ -305,11 +398,29 @@ class AssetCommands:
                         total_uncompressed+=entry.file_size
                         if total_uncompressed>self.GENERATED_MAX_BYTES:
                             raise HarnessError('INVALID_ARGUMENT','generated archive expands beyond the 500MB cap')
-                    archive.extractall(destination)
-                    extracted=[str(destination/entry.filename) for entry in entries if not entry.is_dir()]
+                    for entry in entries:
+                        self._check_cancelled(cancelled)
+                        if entry.is_dir():
+                            continue
+                        output=temporary/entry.filename
+                        output.parent.mkdir(parents=True,exist_ok=True)
+                        with archive.open(entry) as source, output.open('wb') as sink:
+                            while True:
+                                self._check_cancelled(cancelled)
+                                chunk=source.read(1024*256)
+                                if not chunk:
+                                    break
+                                sink.write(chunk)
+                self._check_cancelled(cancelled)
+                temporary.replace(destination)
+                extracted=[str(destination/entry.filename) for entry in entries if not entry.is_dir()]
             except HarnessError:
+                shutil.rmtree(temporary,ignore_errors=True)
+                target.unlink(missing_ok=True)
                 raise
             except (OSError,zipfile.BadZipFile) as exc:
+                shutil.rmtree(temporary,ignore_errors=True)
+                target.unlink(missing_ok=True)
                 raise HarnessError('INVALID_ARGUMENT','generated archive is not a valid ZIP') from exc
             candidates=sorted(Path(path) for path in extracted
                               if Path(path).suffix.lower() in {'.glb','.gltf','.fbx','.obj'})

@@ -1,6 +1,7 @@
 """Isolated Blender child process for one snapshot-bound job."""
 
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -10,13 +11,16 @@ from pathlib import Path
 
 import bpy
 
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-if (ROOT / "scripts" / "harness" / "frame_worker.py").is_file():
-    from scripts.harness.frame_worker import compose_video, render_frame_sequence
-else:
-    from partme_blender_mcp.harness.frame_worker import compose_video, render_frame_sequence
+# Blender 可能已加载其他版本 Add-on；后台任务必须使用自身随包代码。
+worker_package = Path(__file__).resolve().parent
+package_spec = importlib.util.spec_from_file_location(
+    "_partme_job_harness", worker_package / "__init__.py",
+    submodule_search_locations=[str(worker_package)],
+)
+package = importlib.util.module_from_spec(package_spec)
+sys.modules[package_spec.name] = package
+package_spec.loader.exec_module(package)
+from _partme_job_harness.frame_worker import compose_video, render_frame_sequence  # noqa: E402
 
 
 def write_status(path, payload):

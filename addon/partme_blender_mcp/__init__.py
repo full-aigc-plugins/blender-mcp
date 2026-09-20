@@ -5,7 +5,7 @@ bl_info = {
     "author": "PartMe.AI",
     # Blender's Add-on discovery parses bl_info with ast.literal_eval; keep this
     # literal and enforce equality with harness.version in the release tests.
-    "version": (0, 5, 1),
+    "version": (0, 5, 2),
     "blender": (4, 2, 0),
     "location": "3D View > Sidebar > PartMe MCP",
     "description": "Expose Blender through the guarded PartMe MCP Harness",
@@ -21,6 +21,8 @@ def register():
     from .harness.provider_registry import reload_provider_registry
     reload_provider_registry(Path(__file__).with_name("providers.json"))
     register_panel()
+    from . import provider_engine
+    provider_engine.register()
     if runtime.on_file_loaded not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(runtime.on_file_loaded)
 
@@ -35,4 +37,6 @@ def unregister():
     if runtime.on_file_loaded in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(runtime.on_file_loaded)
     unregister_panel()
+    from . import provider_engine
+    provider_engine.unregister()
     get_provider_registry().clear()

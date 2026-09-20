@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "partme-provider-catalog/v1",
+  "providers": [
+    {
+      "providerId": "polyhaven",
+      "label": "Poly Haven",
+      "category": "asset_library",
+      "source": "community",
+      "enabled": true,
+      "mutable": true,
+      "configurable": false,
+      "risks": [
+        "read",
+        "network_download",
+        "scene_import"
+      ],
+      "status": {
+        "state": "ready",
+        "statusText": "可用"
+      },
+      "actions": [
+        "browse"
+      ],
+      "metadata": {
+        "uiOrder": 20,
+        "statusCommand": "get_polyhaven_status"
+      }
+    },
+    {
+      "providerId": "sketchfab",
+      "label": "Sketchfab",
+      "category": "asset_library",
+      "source": "community",
+      "enabled": false,
+      "mutable": true,
+      "configurable": true,
+      "risks": [
+        "read",
+        "network_download",
+        "scene_import"
+      ],
+      "status": {
+        "state": "configuration_required",
+        "statusText": "需要配置密钥"
+      },
+      "actions": [
+        "configure",
+        "browse"
+      ],
+      "metadata": {
+        "uiOrder": 30,
+        "statusCommand": "get_sketchfab_status"
+      }
+    },
+    {
+      "providerId": "hyper3d",
+      "label": "Hyper3D Rodin",
+      "category": "ai_model",
+      "source": "community",
+      "enabled": false,
+      "mutable": true,
+      "configurable": true,
+      "risks": [
+        "read",
+        "paid_generation",
+        "network_download",
+        "scene_import"
+      ],
+      "status": {
+        "state": "configuration_required",
+        "statusText": "需要 OAuth 或 API Key · 生成可能计费"
+      },
+      "actions": [
+        "configure",
+        "generate"
+      ],
+      "metadata": {
+        "uiOrder": 10,
+        "statusCommand": "get_hyper3d_status",
+        "authenticationModes": ["mcp_oauth", "api_key"],
+        "mcpUrl": "https://api.hyper3d.com/api/mcp"
+      }
+    },
+    {
+      "providerId": "hunyuan3d",
+      "label": "腾讯混元 3D",
+      "category": "ai_model",
+      "source": "community",
+      "enabled": false,
+      "mutable": true,
+      "configurable": true,
+      "risks": [
+        "read",
+        "paid_generation",
+        "network_download",
+        "scene_import"
+      ],
+      "status": {
+        "state": "configuration_required",
+        "statusText": "未配置 · 生成可能计费"
+      },
+      "actions": [
+        "configure",
+        "generate"
+      ],
+      "metadata": {
+        "uiOrder": 20,
+        "statusCommand": "get_hunyuan3d_status"
+      }
+    }
+  ]
+}

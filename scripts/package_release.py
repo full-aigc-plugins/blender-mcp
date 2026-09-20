@@ -90,6 +90,9 @@ def addon_entries():
     )
     for name in ("validate_model_in_blender.py", "__main__.py", "doctor.py"):
         entries.append((src_root / name, f"partme_blender_mcp/{name}"))
+    entries.append((ROOT / "vendor/community/blender_mcp_community/__init__.py",
+                    "partme_blender_mcp/provider_backend.py"))
+    entries.append((ROOT / "THIRD_PARTY_NOTICES.md", "partme_blender_mcp/THIRD_PARTY_NOTICES.md"))
     names = [name for _, name in entries]
     if len(names) != len(set(names)):
         raise RuntimeError("Add-on archive would contain duplicate entries")
@@ -142,13 +145,6 @@ def build(output: Path) -> list[Path]:
     write_zip(output / addon_name, addon_entries_list)
     write_zip(output / runtime_name, repository_entries())
 
-    community_name = "partme-community-addon-2.0.0.zip"
-    community_root = ROOT / "vendor/community/blender_mcp_community"
-    write_zip(output / community_name, [
-        (path, f"blender_mcp_community/{path.relative_to(community_root).as_posix()}")
-        for path in files_under(community_root)
-    ])
-
     mac_installer = ROOT / "installers/macos/install_partme_blender_mcp.command"
     platform_common = repository_entries()
     write_tar_gz(output / mac_name, [
@@ -180,7 +176,7 @@ def build(output: Path) -> list[Path]:
         "python": "3.11-3.13",
         "blender": "4.2-5.2",
         "status": "release",
-        "artifacts": [addon_name, runtime_name, community_name, mac_name, windows_name],
+        "artifacts": [addon_name, runtime_name, mac_name, windows_name],
     }
     manifest_path = output / "runtime-manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -225,7 +221,6 @@ def build(output: Path) -> list[Path]:
         output / windows_name,
         manifest_path,
         sbom_path,
-        output / community_name,
     ]
     sums_path = output / "SHA256SUMS.txt"
     sums_path.write_text(

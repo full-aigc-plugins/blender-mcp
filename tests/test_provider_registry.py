@@ -131,7 +131,7 @@ class ProviderRegistryTests(unittest.TestCase):
         self.assertEqual(calls, ["probe"])
         self.assertEqual(registry.snapshot()["providers"][0]["statusText"], "可用")
 
-    def test_community_probe_uses_in_process_blender_server_without_loopback_socket(self):
+    def test_polyhaven_probe_uses_partme_engine_without_community_addon(self):
         registry = ProviderRegistry()
         payload = {
             "schemaVersion": "partme-provider-catalog/v1",
@@ -158,14 +158,15 @@ class ProviderRegistryTests(unittest.TestCase):
             path = Path(directory) / "providers.json"
             path.write_text(json.dumps(payload), encoding="utf-8")
             registry.load(path)
-        with patch.dict(sys.modules, {"bpy": fake_bpy}), \
+        with patch.dict(sys.modules, {"partme_blender_mcp.provider_engine": SimpleNamespace()}), \
              patch("partme_blender_mcp.harness.provider_registry.socket.create_connection",
                    side_effect=AssertionError("loopback socket must not be used")) as connect:
             refreshed = registry.refresh(context)
 
         connect.assert_not_called()
         self.assertEqual(refreshed["providers"][0]["state"], "ready")
-        self.assertEqual(refreshed["providers"][0]["statusText"], "可用")
+        self.assertEqual(refreshed["providers"][0]["statusText"], "可用（未验证网络）")
+        self.assertNotIn("enableProperty", refreshed["providers"][0]["metadata"])
 
     def test_sketchfab_in_process_probe_does_not_make_provider_network_request(self):
         registry = ProviderRegistry()
@@ -186,12 +187,14 @@ class ProviderRegistryTests(unittest.TestCase):
         }
         server = SimpleNamespace(_get_sketchfab_api_key=lambda: "configured-secret")
         fake_bpy = SimpleNamespace(types=SimpleNamespace(blendermcp_server=server))
-        context = SimpleNamespace(scene=SimpleNamespace(blendermcp_use_sketchfab=True))
+        context = SimpleNamespace(preferences=SimpleNamespace(addons={
+            'partme_blender_mcp': SimpleNamespace(preferences=SimpleNamespace(
+                sketchfab_api_key='configured-secret'))}))
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "providers.json"
             path.write_text(json.dumps(payload), encoding="utf-8")
             registry.load(path)
-        with patch.dict(sys.modules, {"bpy": fake_bpy}), \
+        with patch.dict(sys.modules, {"partme_blender_mcp.provider_engine": SimpleNamespace()}), \
              patch("partme_blender_mcp.harness.provider_registry.socket.create_connection",
                    side_effect=AssertionError("loopback socket must not be used")) as connect:
             refreshed = registry.refresh(context)
@@ -359,8 +362,8 @@ class ProviderPanelContractTests(unittest.TestCase):
         self.assertIn("_status_icon_value", panel)
         self.assertIn("icon_value=_status_icon_value", panel)
         self.assertIn('_status_icon_value("ready_check" if running else "disabled")', panel)
-        self.assertIn('category == "ai_model"', panel)
-        self.assertIn('emboss=not compact_settings', panel)
+        self.assertIn('toggle.alignment = "LEFT"', panel)
+        self.assertIn('toggle.ui_units_x = 1.2', panel)
         self.assertIn('text="",', panel)
         self.assertIn('emboss=False,', panel)
         self.assertNotIn('text="开" if provider["enabled"] else "关"', panel)
@@ -376,7 +379,7 @@ class ProviderPanelContractTests(unittest.TestCase):
             "class PARTMEBLENDER_OT_cancel_provider_task", 1,
         )[0]
         self.assertIn('title="供应商配置"', provider_dialog)
-        self.assertIn('confirm_text="保存"', provider_dialog)
+        self.assertIn('confirm_text="保存并启用" if self.enable_after_save else "保存"', provider_dialog)
         self.assertNotIn("blendermcp_use_polypizza", panel)
 
     def test_finalized_ui_defaults_open_and_exposes_real_generic_task_controls(self):
@@ -395,11 +398,12 @@ class ProviderPanelContractTests(unittest.TestCase):
         self.assertIn("PARTMEBLENDER_OT_generate_remote_token", panel)
         self.assertIn("secrets.token_urlsafe(32)", panel)
         self.assertIn("Authorization: Bearer <token>", panel)
-        self.assertIn("Token 不会写入复制地址", panel)
-        for label in ("相机", "正面", "侧面", "顶面", "播放 / 暂停动画", "快捷操作"):
+        self.assertIn("远程需鉴权，地址不含密钥", panel)
+        for label in ("相机", "正面", "侧面", "顶面", "播放动画", "暂停动画", "快捷操作"):
             self.assertIn(label, panel)
-        for label in ("素材库", "AI 生成模型", "当前帧", "配置 MCP Python"):
+        for label in ("素材库", "AI 生成模型", "配置 MCP Python"):
             self.assertIn(label, panel)
+        self.assertIn('playback.prop(context.scene, "frame_current", text="帧")', panel)
         self.assertNotIn('box.label(text="无待批准操作"', panel)
 
 

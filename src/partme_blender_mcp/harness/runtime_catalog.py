@@ -19,7 +19,7 @@ FIELDS = {
         'modifier', 'type', 'path', 'videoPath', 'outputDir', 'snapshotId', 'sessionId',
         'camera', 'dataPath', 'text', 'script', 'milestone', 'prompt', 'id', 'domain', 'maturity', 'view',
         'baseName', 'groupName', 'strip', 'colorDepth', 'uvLayer', 'url', 'filename',
-        'providerId', 'risk',
+        'providerId', 'taskId', 'risk',
         'query', 'licence', 'modelId')},
     **{key: VECTOR for key in ('location', 'rotation', 'scale', 'color')},
     'baseColor': {'type': 'array', 'minItems': 4, 'maxItems': 4,
@@ -88,7 +88,7 @@ FIELDS = {
     'keyName': {'type':'string'}, 'fromMix': {'type':'boolean'},
     'source': {'type':'object'}, 'boneMap': {'type':'object'}, 'frameStart': {'type':'integer'},
     'frameEnd': {'type':'integer'}, 'step': {'type':'integer','minimum':1},
-    'camera': {'type':'object'}, 'path': {'type':'object'},
+    'camera': {'type':'object'},
     'jobId': {'type':'string','pattern':'^job_[A-Za-z0-9_-]{1,80}$'},
     'kind': {'type':'string','enum':['EXPORT','RENDER_STILL','BAKE_POINT_CACHES','RENDER_ANIMATION_FRAMES','COMPOSE_VIDEO']},
     'format': {'type':'string','enum':['blend','glb','gltf','fbx','obj']},
@@ -134,6 +134,52 @@ FIELDS = {
     'parameters': {'type': 'object', 'description': 'Format-specific exporter parameters'},
     'stage': {'type': 'string', 'minLength': 1, 'maxLength': 80},
     'progress': {'type': ['number', 'null'], 'minimum': 0, 'maximum': 1},
+    'params': {'type': 'object', 'description': 'Provider-specific parameters validated by the selected action'},
+    'estimatedCost': {
+        'oneOf': [
+            {'type': 'number', 'minimum': 0},
+            {'type': 'string', 'pattern': r'^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$'},
+        ],
+        'description': 'Non-negative estimated provider cost used by the automatic budget gate',
+    },
+    'engine': {'type': 'string', 'enum': ['AUTO', 'BLENDER_EEVEE_NEXT', 'BLENDER_EEVEE', 'CYCLES']},
+    'shape': {'type': 'string', 'enum': ['CUBE', 'SPHERE', 'CIRCLE', 'ARROWS']},
+    'blenderVersion': {
+        'type': 'array', 'minItems': 3, 'maxItems': 3,
+        'items': {'type': 'integer', 'minimum': 0},
+    },
+    'platform': {'type': 'string'},
+    'runtimeMode': {'type': 'string'},
+    'profile': {
+        'type': 'object',
+        'properties': {
+            'excludeDomains': {'type': 'array', 'items': {'type': 'string'}},
+            'excludeClasses': {'type': 'array', 'items': {'type': 'string'}},
+        },
+        'additionalProperties': False,
+    },
+    'runtime': {
+        'type': 'object',
+        'properties': {
+            'blenderVersion': {
+                'type': 'array', 'minItems': 3, 'maxItems': 3,
+                'items': {'type': 'integer', 'minimum': 0},
+            },
+            'platform': {'type': 'string'},
+            'architecture': {'type': 'string'},
+            'runtimeMode': {'type': 'string'},
+        },
+        'required': ['blenderVersion', 'platform', 'architecture', 'runtimeMode'],
+        'additionalProperties': False,
+    },
+}
+
+COMMAND_FIELD_SCHEMAS = {
+    # Most ``path`` arguments are filesystem strings. Camera follow-path is the
+    # deliberate exception: it resolves a Blender curve object locator.
+    'camera.follow_path': {
+        'path': {'type': 'object', 'description': 'Curve object locator'},
+    },
 }
 
 TESTS = {
@@ -388,6 +434,9 @@ class RuntimeCommandRegistry(CommandRegistry):
             for field in validate.schema['properties']:
                 validate.schema['properties'][field] = deepcopy(FIELDS.get(field, {
                     'description': 'See command validation; detailed type not yet audited'}))
+            for field, schema in COMMAND_FIELD_SCHEMAS.get(name, {}).items():
+                if field in validate.schema['properties']:
+                    validate.schema['properties'][field] = deepcopy(schema)
             if name in {'modifier.add','modifier.configure'} and 'settings' in validate.schema['properties']:
                 validate.schema['properties']['settings']=deepcopy(MODIFIER_SETTINGS_SCHEMA)
             if name=='export.file' and 'parameters' in validate.schema['properties']:

@@ -4,13 +4,13 @@
 > 适用：Blender 4.2–5.2、macOS / Windows / Linux  
 > 核验日期：2026-09-15
 
-> **预发布提醒**：`v0.5.1` 是正式版本。只从 [GitHub Release](https://github.com/full-aigc-plugins/blender-mcp/releases/latest) 下载，并在安装前核对 SHA-256。
+> **预发布提醒**：`v0.5.2` 是正式版本。只从 [GitHub Release](https://github.com/full-aigc-plugins/blender-mcp/releases/latest) 下载，并在安装前核对 SHA-256。
 
 ## 1. 前置条件
 
 - 已安装 Blender 4.2 或更高版本（[官方下载](https://www.blender.org/download/)）。
 - 已安装 PartMe Blender MCP Runtime（参见 [macOS 安装](macos.zh-CN.md) 或 [Windows 安装](windows.zh-CN.md)）。
-- 已从 Release 下载 `partme-blender-mcp-addon-0.5.1.zip` 并校验 SHA-256。
+- 已从 Release 下载 `partme-blender-mcp-addon-0.5.2.zip` 并校验 SHA-256。
 
 ## 2. 从磁盘安装 Add-on
 
@@ -22,7 +22,7 @@
 
    ![从磁盘安装](../assets/reference/blender-install-from-disk.png)
 
-3. 选择 `partme-blender-mcp-addon-0.5.1.zip`。不要解压。
+3. 选择 `partme-blender-mcp-addon-0.5.2.zip`。不要解压。
 4. 搜索并启用 **PartMe Blender MCP**。
 
 不要把社区插件 **MCP for Blender** 当作 PartMe Add-on。

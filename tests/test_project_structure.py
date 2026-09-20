@@ -103,7 +103,15 @@ class LayoutTests(unittest.TestCase):
     def test_runtime_modules_live_only_in_src(self):
         """The Add-on tree owns Add-on code; the Harness is copied in at package time."""
         addon_modules = sorted(path.name for path in ADDON.glob("*.py"))
-        self.assertEqual(addon_modules, ["__init__.py", "panel.py", "remote.py", "runtime.py"])
+        self.assertEqual(addon_modules, [
+            "__init__.py",
+            "compat_io.py",
+            "hyper3d_auth.py",
+            "panel.py",
+            "provider_engine.py",
+            "remote.py",
+            "runtime.py",
+        ])
         self.assertFalse((ADDON / "harness").exists(), "harness must not be duplicated under addon/")
 
     def test_reimport_validation_script_is_inside_the_runtime_package(self):
@@ -143,6 +151,9 @@ class ArchiveIntegrityTests(unittest.TestCase):
 
     def test_addon_archive_is_a_single_importable_package(self):
         entries = self.packager.addon_entries()
+        catalog_path = next((source for source, name in entries
+                             if name == 'partme_blender_mcp/providers.json'), None)
+        self.assertIsNotNone(catalog_path, '独立 Add-on 必须内置供应商目录')
         tops = {name.split("/")[0] for _, name in entries}
         self.assertEqual(tops, {"partme_blender_mcp"}, "Blender installs exactly one top-level package")
         names = [name for _, name in entries]
@@ -228,6 +239,44 @@ class CatalogIntegrityTests(unittest.TestCase):
         self.assertIn("items", points, "points requires an item schema")
         target = ast.unparse(merged["targetObjectId"])
         self.assertIn("locator", target, "targetObjectId is an object locator")
+
+    def test_file_paths_and_camera_path_have_command_specific_schemas(self):
+        sys.path.insert(0, str(ROOT / "src"))
+        try:
+            from partme_blender_mcp.harness.mcp_adapter import build_tool_catalog
+            catalog = {tool["name"]: tool for tool in build_tool_catalog()}
+        finally:
+            sys.path.pop(0)
+        for tool_name in (
+            "blender_asset_import_file",
+            "blender_export_extended",
+            "blender_tracking_load_clip",
+        ):
+            self.assertEqual(
+                catalog[tool_name]["inputSchema"]["properties"]["path"]["type"],
+                "string",
+                tool_name,
+            )
+        self.assertEqual(
+            catalog["blender_camera_follow_path"]["inputSchema"]["properties"]["path"]["type"],
+            "object",
+        )
+        generated = catalog["blender_asset_fetch_generated"]["inputSchema"]["properties"]
+        self.assertEqual(generated["url"]["type"], "string")
+        self.assertEqual(generated["params"]["type"], "object")
+
+    def test_every_public_tool_property_has_a_json_type(self):
+        sys.path.insert(0, str(ROOT / "src"))
+        try:
+            from partme_blender_mcp.harness.mcp_adapter import build_tool_catalog
+            missing = []
+            for tool in build_tool_catalog():
+                for field, schema in tool.get("inputSchema", {}).get("properties", {}).items():
+                    if not any(key in schema for key in ("type", "oneOf", "anyOf", "allOf", "$ref")):
+                        missing.append((tool["name"], field))
+        finally:
+            sys.path.pop(0)
+        self.assertEqual(missing, [])
 
 
 class BrandingTests(unittest.TestCase):

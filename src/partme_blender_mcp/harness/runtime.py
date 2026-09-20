@@ -110,18 +110,49 @@ def build_registry(bpy_module, *, runtime_mode: str = "managed", approved_output
         return {"changedObjects": [], "result": result}
 
     def provider_external_action(arguments):
+        if arguments.get('action') in {'get_viewport_screenshot', 'export_scene'}:
+            action = arguments['action']
+            expected_risk = 'read' if action == 'get_viewport_screenshot' else 'external_export'
+            if arguments.get('providerId') != 'base' or arguments.get('risk') != expected_risk:
+                raise HarnessError('INVALID_ARGUMENT', '文件操作风险等级不匹配')
+            from partme_blender_mcp.compat_io import execute
+            return {'changedObjects': [], 'result': execute(action, arguments.get('params'), approved_output_root,
+                                                          revision_provider())}
         try:
             get_provider_registry().require_enabled(arguments["providerId"], context=getattr(bpy_module, "context", None))
         except ProviderRegistryError as exc:
             code = ("PROVIDER_CONFIGURATION_REQUIRED" if "requires configuration" in str(exc) else
                     "PROVIDER_UNAVAILABLE" if "unavailable" in str(exc) else "PROVIDER_DISABLED")
             raise HarnessError(code, str(exc)) from exc
+        if "params" in arguments:
+            from partme_blender_mcp.provider_engine import execute
+            return {"changedObjects": [], "result": execute(arguments, approved_asset_roots=approved_asset_roots)}
         return {"changedObjects": [], "result": {
             "providerId": arguments["providerId"], "action": arguments["action"],
             "risk": arguments["risk"], "approved": True,
         }}
 
+    def provider_status(arguments):
+        snapshot = get_provider_registry().refresh(getattr(bpy_module, 'context', None))
+        provider_id = arguments.get('providerId')
+        if provider_id:
+            row = next((row for row in snapshot['providers'] if row['providerId'] == provider_id), None)
+            if row is None:
+                raise HarnessError('INVALID_ARGUMENT', 'unknown provider')
+            return {'changedObjects': [], 'result': row}
+        return {'changedObjects': [], 'result': snapshot}
+
+    def provider_query(arguments):
+        # 风险由服务器固定；客户端无法把创建任务伪装成查询。
+        return provider_external_action({**arguments, 'risk': 'read'})
+
+    def provider_query_result(arguments):
+        from partme_blender_mcp.provider_engine import query_result
+        return {'changedObjects': [], 'result': query_result(
+            arguments['providerId'], arguments['taskId'])}
+
     registry = RuntimeCommandRegistry(bpy_module, output_root=approved_output_root, asset_roots=approved_asset_roots)
+    registry.register_closer(assets.close)
     registry.register('capability.list',
                       lambda args: {'changedObjects': [], 'result': registry.list_capabilities(args)},
                       validate=closed_arguments(optional=('domain', 'maturity', 'offset', 'limit',
@@ -240,14 +271,16 @@ def build_registry(bpy_module, *, runtime_mode: str = "managed", approved_output
                       validate=closed_arguments(required=('path','dataType','names'), optional=('link',)))
     registry.register('asset.pack_resources',assets.pack_resources,validate=closed_arguments())
     registry.register('asset.make_paths_relative',assets.make_paths_relative,validate=closed_arguments())
-    registry.register('asset.fetch_url',assets.fetch_url,
+    registry.register('asset.fetch_url',assets.fetch_url_async,
                       validate=closed_arguments(required=('url',),optional=('filename',)))
-    registry.register('asset.fetch_generated',assets.fetch_generated,
-                      validate=closed_arguments(required=('url','providerId'),optional=('filename',)), risk='gated')
-    registry.register('asset.polypizza_search',assets.polypizza_search,
+    registry.register('asset.fetch_generated',assets.fetch_generated_async,
+                      validate=closed_arguments(required=('providerId',),optional=('url','filename','params')), risk='gated')
+    registry.register('asset.polypizza_search',assets.polypizza_search_async,
                       validate=closed_arguments(required=(),optional=('query','licence','limit')), risk='read')
-    registry.register('asset.polypizza_download',assets.polypizza_download,
+    registry.register('asset.polypizza_download',assets.polypizza_download_async,
                       validate=closed_arguments(required=('modelId',)), risk='gated')
+    registry.register('asset.operation_result',assets.operation_result,
+                      validate=closed_arguments(required=('providerId','taskId')), risk='read')
     registry.register('provider.task_control', provider_task_control,
                       validate=closed_arguments(
                           required=('operation',),
@@ -257,8 +290,14 @@ def build_registry(bpy_module, *, runtime_mode: str = "managed", approved_output
     registry.register('provider.external_action',
                       provider_external_action,
                       validate=closed_arguments(
-                          required=('providerId','action','risk'), optional=('estimatedCost',),
+                          required=('providerId','action','risk'), optional=('estimatedCost','params'),
                       ), risk='gated')
+    registry.register('provider.status', provider_status,
+                      validate=closed_arguments(optional=('providerId',)), risk='read')
+    registry.register('provider.query', provider_query,
+                      validate=closed_arguments(required=('providerId', 'action', 'params')), risk='read')
+    registry.register('provider.query_result', provider_query_result,
+                      validate=closed_arguments(required=('providerId', 'taskId')), risk='read')
     registry.register('uv.mark_seams',uvs.mark_seams,
                       validate=closed_arguments(required=('selection',),optional=('seam',)))
     registry.register('uv.unwrap',uvs.unwrap,

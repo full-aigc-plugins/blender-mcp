@@ -29,7 +29,7 @@ CONTROL_TOOLS = {
     "blender_transaction_commit": "transaction.commit",
     "blender_transaction_rollback": "transaction.rollback",
 }
-PUBLIC_EXCLUDED_COMMANDS = {"advanced.execute_python", "provider.external_action", "provider.task_control"}
+PUBLIC_EXCLUDED_COMMANDS = {"advanced.execute_python", "provider.task_control"}
 
 
 class McpAdapterError(RuntimeError):
@@ -224,7 +224,11 @@ class DescriptorBridge:
             payload["expectedSceneRevision"] = expected_scene_revision
         if authorization is not None:
             payload["authorization"] = authorization
-        return self.sender(_endpoint(descriptor), descriptor["token"], payload)
+        try:
+            return self.sender(_endpoint(descriptor), descriptor["token"], payload)
+        except OSError as error:
+            # 进程仍存活不代表旧 socket 有效；发现流程应跳过失效会话。
+            raise McpAdapterError("BLENDER_NOT_CONNECTED", "Harness connection is unavailable") from error
 
 
 def discover_bridge(runtime_dir: Path | None = None) -> DescriptorBridge:

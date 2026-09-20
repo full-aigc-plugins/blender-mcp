@@ -67,6 +67,10 @@ class ProviderTaskRegistryTests(unittest.TestCase):
             "operation": "status", "providerId": "hyper3d", "taskId": "task-a",
         })["taskId"], "task-a")
         self.assertEqual(len(registry.control({"operation": "list"})["tasks"]), 1)
+        cancelled = registry.control({
+            "operation": "cancel", "providerId": "hyper3d", "taskId": "task-a",
+        })
+        self.assertEqual(cancelled["state"], "cancelled")
 
 
 class ProviderAssetStrategyTests(unittest.TestCase):
@@ -85,3 +89,11 @@ class ProviderAssetStrategyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+class CancelledTaskInvariantTests(unittest.TestCase):
+    def test_late_updates_cannot_restart_cancelled_task(self):
+        registry = ProviderTaskRegistry()
+        registry.update({'operation': 'start', 'providerId': 'hyper3d', 'taskId': 'job', 'state': 'generating'})
+        cancelled = registry.request_cancel('hyper3d', 'job')
+        for operation, state in [('update', 'generating'), ('finish', 'completed'), ('start', 'generating')]:
+            result = registry.update({'operation': operation, 'providerId': 'hyper3d', 'taskId': 'job', 'state': state})
+            self.assertEqual(result, cancelled)

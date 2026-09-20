@@ -10,7 +10,7 @@ from collections import OrderedDict
 
 
 PROVIDER_TASK_SCHEMA = "partme-provider-task/v1"
-ACTIVE_STATES = frozenset({"submitting", "generating", "downloading", "staged", "importing"})
+ACTIVE_STATES = frozenset({"submitting", "querying", "generating", "downloading", "staged", "importing"})
 TERMINAL_STATES = frozenset({"completed", "failed", "cancelled"})
 VALID_STATES = ACTIVE_STATES | TERMINAL_STATES
 _IDENTIFIER = re.compile(r"[a-z][a-z0-9_]{1,63}")
@@ -56,6 +56,13 @@ class ProviderTaskRegistry:
         key = (provider_id, task_id)
         with self._lock:
             current = self._tasks.get(key)
+            # 取消是本地终态；旧轮询、重试或晚到的完成回执不得复活任务。
+            if current and current.get('cancelRequested'):
+                return copy.deepcopy(current)
+            # 手动查询与自动轮询可能乱序返回，生成完成后不能被旧 RUN 响应复活。
+            # 后续 downloading/importing 生命周期仍允许正常进入。
+            if current and current['state'] == 'completed' and state in {'submitting', 'generating'}:
+                return copy.deepcopy(current)
             if operation == "start":
                 created_at = now
             elif current is None:
@@ -76,6 +83,12 @@ class ProviderTaskRegistry:
                 "cancelSupported": cancel_supported,
                 "cancelRequested": bool((current or {}).get("cancelRequested", False)),
                 "remoteMayContinue": bool((current or {}).get("remoteMayContinue", False)),
+                "remoteTaskId": self._remote_task_id(
+                    payload.get("remoteTaskId", (current or {}).get("remoteTaskId"))
+                ),
+                "resultReference": self._result_reference(
+                    payload.get("resultReference", (current or {}).get("resultReference"))
+                ),
                 "createdAt": created_at,
                 "updatedAt": now,
             }
@@ -130,6 +143,18 @@ class ProviderTaskRegistry:
             return None
         return task
 
+    def find_by_remote(self, provider_id: str, remote_task_id: str) -> dict | None:
+        """按供应商远端任务 ID 查找本地提交任务。"""
+        provider_id = self._provider_id(provider_id)
+        remote_task_id = self._remote_task_id(remote_task_id)
+        if remote_task_id is None:
+            return None
+        with self._lock:
+            for (candidate, _), task in reversed(self._tasks.items()):
+                if candidate == provider_id and task.get("remoteTaskId") == remote_task_id:
+                    return copy.deepcopy(task)
+        return None
+
     def snapshot(self) -> dict:
         with self._lock:
             tasks = [copy.deepcopy(task) for task in self._tasks.values()]
@@ -146,6 +171,8 @@ class ProviderTaskRegistry:
             return task or {"schemaVersion": PROVIDER_TASK_SCHEMA, "task": None}
         if operation == "list":
             return self.snapshot()
+        if operation == "cancel":
+            return self.request_cancel(payload.get("providerId"), payload.get("taskId"))
         raise ProviderTaskError("unknown provider task operation")
 
     @staticmethod
@@ -159,6 +186,28 @@ class ProviderTaskRegistry:
         if not isinstance(value, str) or not value.strip() or len(value) > 256:
             raise ProviderTaskError("taskId must be a non-empty string of at most 256 characters")
         return value.strip()
+
+    @staticmethod
+    def _remote_task_id(value) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, (str, int)) or not str(value).strip() or len(str(value)) > 256:
+            raise ProviderTaskError("remoteTaskId must be a non-empty string of at most 256 characters")
+        return str(value).strip()
+
+    @staticmethod
+    def _result_reference(value) -> dict | None:
+        if value is None:
+            return None
+        allowed = {"subscription_key", "request_id", "task_uuid", "JobId", "job_id", "uuid", "id"}
+        if not isinstance(value, dict) or set(value) - allowed:
+            raise ProviderTaskError("resultReference contains unsupported fields")
+        result = {}
+        for key, item in value.items():
+            if not isinstance(item, (str, int)) or not str(item).strip() or len(str(item)) > 256:
+                raise ProviderTaskError("resultReference values must be short identifiers")
+            result[key] = str(item).strip()
+        return result or None
 
     @staticmethod
     def _progress(value) -> float | None:

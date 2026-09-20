@@ -58,9 +58,12 @@ INSPECTION_COMMANDS = {
     "scene.inspect", "preview.capture", "view.present", "view.set", "view.focus", "playback.set_frame", "playback.set",
     "official_uploader.inspect", "official_uploader.status",
     "provider.task_control",
+    "provider.status", "provider.query", "provider.query_result",
+    "asset.polypizza_search", "asset.operation_result",
 }
 READ_ONLY_COMMANDS.update(INSPECTION_COMMANDS | {"session.resume"})
 GATED_COMMANDS = {
+    "asset.fetch_generated",
     "provider.external_action",
     "session.resume",
     "object.delete",
@@ -323,6 +326,7 @@ class HarnessSession:
         self._notify()
 
     def revoke(self):
+        self._close_dispatch_owner()
         self.revoked = True
         self._pending_authorizations.clear()
         self._local_approvals.clear()
@@ -351,6 +355,7 @@ class HarnessSession:
         private descriptor before invoking this method. Changing the policy invalidates
         cached responses, committed export grants, and any short-lived local approval.
         """
+        self._close_dispatch_owner()
         self.dispatch = dispatch
         self.execution_policy = execution_policy
         self.control_epoch += 1
@@ -365,6 +370,12 @@ class HarnessSession:
             "executionPolicy": self.execution_policy.to_audit_dict(),
         })
         self._notify()
+
+    def _close_dispatch_owner(self) -> None:
+        owner = getattr(self.dispatch, '__self__', None)
+        close = getattr(owner, 'close', None)
+        if callable(close):
+            close()
 
     def approve_pending(self, request_id: str, *, ttl_seconds: int = LOCAL_APPROVAL_TTL_SECONDS,
                         source: str = "local_ui") -> dict:

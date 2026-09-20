@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.5.1"
+VERSION = "0.5.2"
 
 
 class RepositoryStructureTests(unittest.TestCase):
@@ -93,7 +93,9 @@ class RuntimeContractTests(unittest.TestCase):
         finally:
             sys.path.pop(0)
         commands = [tool for tool in tools if tool.get("_meta", {}).get("codexBlenderCommand")]
-        self.assertEqual(len(commands), 168)
+        self.assertEqual(len(commands), 173)
+        self.assertIn("blender_provider_query_result", {tool["name"] for tool in commands})
+        self.assertIn("blender_asset_operation_result", {tool["name"] for tool in commands})
         self.assertFalse(any("official_uploader" in tool["name"] for tool in commands))
         self.assertNotIn("blender_advanced_execute_python", {tool["name"] for tool in commands})
         self.assertNotIn("blender_authorize", {tool["name"] for tool in tools})
@@ -140,9 +142,9 @@ class ReleasePackageTests(unittest.TestCase):
                 "runtime-manifest.json",
                 "SHA256SUMS.txt",
                 "SBOM.spdx.json",
-                "partme-community-addon-2.0.0.zip",
             }
             self.assertEqual({path.name for path in output.iterdir()}, names)
+            self.assertFalse((output / "partme-community-addon-2.0.0.zip").exists())
             sums = {}
             for line in (output / "SHA256SUMS.txt").read_text().splitlines():
                 digest, name = line.split("  ", 1)

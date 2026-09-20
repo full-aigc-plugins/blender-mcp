@@ -127,6 +127,29 @@ class RuntimeReconfigurationTests(unittest.TestCase):
                     runtime_mode="connector",
                 )
 
+    def test_reconfigure_and_revoke_close_owned_dispatch_registry(self):
+        class DispatchOwner:
+            def __init__(self):
+                self.closed = 0
+
+            def dispatch(self, _command, _arguments):
+                return {}
+
+            def close(self):
+                self.closed += 1
+
+        old = DispatchOwner()
+        replacement = DispatchOwner()
+        session = HarnessSession("owned", dispatch=old.dispatch)
+        session.apply_reconfiguration(
+            dispatch=replacement.dispatch,
+            execution_policy=ExecutionPolicy.interactive(),
+        )
+        self.assertEqual(old.closed, 1)
+        self.assertEqual(replacement.closed, 0)
+        session.revoke()
+        self.assertEqual(replacement.closed, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

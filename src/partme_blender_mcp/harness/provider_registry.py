@@ -22,6 +22,7 @@ VALID_STATES = {"ready", "disabled", "configuration_required", "unavailable", "b
 VALID_RISKS = {"read", "network_download", "paid_generation", "scene_import", "external_export"}
 ACTIVE_TASK_STATUS = {
     "submitting": "提交中",
+    "querying": "查询中",
     "generating": "生成中",
     "downloading": "下载中",
     "staged": "等待导入",
@@ -109,7 +110,12 @@ class ProviderRegistry:
                 raise ProviderRegistryError("provider contribution contains unknown fields")
             metadata = dict(item.get("metadata") or {})
             status_probe = None
-            if item.get("source") == "community" and metadata.get("statusCommand"):
+            if item.get("providerId") in {"polyhaven", "sketchfab", "hyper3d", "hunyuan3d"}:
+                # 凭证和路由偏好由 PartMe 所有，不再要求另装社区 Add-on。
+                metadata.pop("enableProperty", None)
+                metadata.pop("preferencesModule", None)
+                status_probe = _partme_provider_status(item["providerId"])
+            elif item.get("source") == "community" and metadata.get("statusCommand"):
                 status_probe = _community_status_probe(metadata["statusCommand"], metadata)
             self.register(ProviderDefinition(
                 provider_id=item.get("providerId", ""),
@@ -376,6 +382,42 @@ def _community_status_probe(command: str, metadata: dict | None = None):
             ready_text="可用" if command == "get_polyhaven_status" else "已配置",
         )
 
+    return probe
+
+
+def _partme_provider_status(provider_id):
+    def probe(context):
+        addons = getattr(getattr(context, "preferences", None), "addons", {})
+        preferences = getattr(addons.get("partme_blender_mcp"), "preferences", None)
+        if provider_id == "polyhaven":
+            configured = True
+        elif provider_id == "hyper3d":
+            oauth = getattr(preferences, "hyper3d_auth_mode", "API_KEY") == "MCP_OAUTH"
+            if oauth:
+                authorized = getattr(preferences, "hyper3d_oauth_status", "NOT_AUTHORIZED") == "AUTHORIZED"
+                # The client owning an OAuth grant is not proof that its MCP
+                # transport completed initialize/initialized and can list or
+                # call tools. Keep it out of the available-provider count until
+                # a real client connectivity probe supplies that evidence.
+                return ({"state": "unavailable", "statusText": "OAuth 已授权 · 客户端连接待验证"} if authorized else
+                        {"state": "configuration_required", "statusText": "等待客户端 OAuth 授权"})
+            configured = bool(getattr(preferences, "hyper3d_api_key", "").strip())
+        elif provider_id == "hunyuan3d":
+            local = getattr(preferences, "hunyuan3d_mode", "OFFICIAL_API") == "LOCAL_API"
+            configured = (bool(getattr(preferences, "hunyuan3d_api_url", "").strip()) if local else
+                          bool(getattr(preferences, "hunyuan3d_secret_id", "").strip()
+                               and getattr(preferences, "hunyuan3d_secret_key", "").strip()))
+        else:
+            configured = bool(getattr(preferences, provider_id + "_api_key", "").strip())
+        if not configured:
+            return {"state": "configuration_required", "statusText": "需要配置凭证"}
+        try:
+            importlib.import_module('partme_blender_mcp.provider_engine')
+        except ImportError:
+            return {"state": "unavailable", "statusText": "凭证已配置；执行器未加载"}
+        if provider_id == 'polyhaven':
+            return {"state": "ready", "statusText": "可用（未验证网络）"}
+        return {"state": "ready", "statusText": "已配置（未验证远端凭证）"}
     return probe
 
 
