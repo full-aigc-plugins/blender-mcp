@@ -358,6 +358,12 @@ class ProviderPanelContractTests(unittest.TestCase):
         self.assertIn('if provider["configurable"] and not active:', panel)
         self.assertIn("_status_icon_value", panel)
         self.assertIn("icon_value=_status_icon_value", panel)
+        self.assertIn('_status_icon_value("ready_check" if running else "disabled")', panel)
+        self.assertIn('category == "ai_model"', panel)
+        self.assertIn('emboss=not compact_settings', panel)
+        self.assertIn('text="",', panel)
+        self.assertIn('emboss=False,', panel)
+        self.assertNotIn('text="开" if provider["enabled"] else "关"', panel)
         execution_dialog = panel.split("class PARTMEBLENDER_OT_execution_settings", 1)[1].split(
             "class PARTMEBLENDER_OT_remote_settings", 1,
         )[0]

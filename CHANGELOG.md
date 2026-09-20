@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- AI model cards keep provider identity, the compact settings affordance and the
+  enable control in one header instead of expanding `开/关` and `配置` into stacked,
+  full-width buttons in narrow sidebars.
+- The Blender service-ready summary uses the packaged green confirmation badge rather
+  than falling back to a theme-colored checkbox.
+
 ## [0.5.1] - 2026-09-20
 
 ### Added

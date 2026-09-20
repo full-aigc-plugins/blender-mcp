@@ -790,19 +790,13 @@ def _draw_provider_rows(layout, context, category):
         active = task is not None and task["active"]
         row = box.row(align=True)
         row.scale_y = 1.35
-        if category == "ai_model" and compact:
-            identity = box.column(align=True)
-            identity.label(
-                text=provider["label"], icon=_PROVIDER_ICONS.get(provider["providerId"], "PLUGIN"),
-            )
-            status = identity.row(align=True)
-            actions = box.row(align=True)
-        elif category == "ai_model":
-            identity = row.column(align=True)
-            identity.label(
-                text=provider["label"], icon=_PROVIDER_ICONS.get(provider["providerId"], "PLUGIN"),
-            )
-            status = identity.row(align=True)
+        if category == "ai_model":
+            # Keep the model identity, configuration action and enable control in
+            # one restrained header. Status and task details remain on their own
+            # lines so a narrow N-panel never turns the controls into two wide,
+            # visually dominant buttons.
+            row.label(text=provider["label"], icon=_PROVIDER_ICONS.get(provider["providerId"], "PLUGIN"))
+            status = box.row(align=True)
             actions = row.row(align=True)
         elif compact and provider["configurable"]:
             identity = row.row(align=True)
@@ -820,11 +814,15 @@ def _draw_provider_rows(layout, context, category):
         status.label(text=status_text, icon_value=_status_icon_value(provider["state"]))
         if provider["configurable"] and not active:
             settings = actions.row(align=True)
-            compact_settings = category == "asset_library" and provider["providerId"] == "polypizza"
+            compact_settings = (
+                category == "ai_model" or
+                (category == "asset_library" and provider["providerId"] == "polypizza")
+            )
             action = settings.operator(
                 PARTMEBLENDER_OT_provider_settings.bl_idname,
                 text="" if compact_settings else "配置",
                 icon="PREFERENCES" if compact_settings else "NONE",
+                emboss=not compact_settings,
             )
             action.provider_id = provider["providerId"]
         if provider["mutable"]:
@@ -834,9 +832,10 @@ def _draw_provider_rows(layout, context, category):
             toggle.enabled = not provider["toggleLocked"]
             action = toggle.operator(
                 PARTMEBLENDER_OT_set_provider_enabled.bl_idname,
-                text="开" if provider["enabled"] else "关",
+                text="",
                 icon="CHECKBOX_HLT" if provider["enabled"] else "CHECKBOX_DEHLT",
                 depress=provider["enabled"],
+                emboss=False,
             )
             action.provider_id = provider["providerId"]
             action.enabled = not provider["enabled"]
@@ -847,7 +846,7 @@ def _draw_provider_rows(layout, context, category):
             task_row = box.row(align=True)
             task_row.label(text=task.get("stage") or "自动生成 · 正在处理")
             if "cancel" in provider["actions"]:
-                cancel = box.row(align=True) if compact else task_row.row(align=True)
+                cancel = task_row.row(align=True)
                 cancel.alert = True
                 action = cancel.operator(
                     PARTMEBLENDER_OT_cancel_provider_task.bl_idname,
