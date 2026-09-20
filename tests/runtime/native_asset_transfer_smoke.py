@@ -1,4 +1,5 @@
 """真实 Blender 中验证素材下载后台化与本地终止；不访问公网。"""
+# ruff: noqa: E402 -- Blender 必须先启用 Add-on，才能导入其运行时模块。
 
 import json
 import os

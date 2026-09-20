@@ -1,5 +1,5 @@
 """真实 GLB/FBX 导出与截图路径守卫；不需要社区 Add-on。"""
-import json
+# ruff: noqa: E402 -- Blender 必须先启用 Add-on，才能导入其运行时模块。
 import sys
 import tempfile
 from pathlib import Path

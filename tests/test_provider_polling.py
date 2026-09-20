@@ -89,7 +89,7 @@ class PollingTests(unittest.TestCase):
                               'taskId': 'malformed', 'state': 'generating'})
                 poller = ProviderPoller(tasks, interval=.001, max_errors=2)
                 calls = []
-                def query():
+                def query(calls=calls, response=response):
                     calls.append(1)
                     return response
                 worker = poller.start('poll_rodin_job_status',

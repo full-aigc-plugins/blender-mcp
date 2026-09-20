@@ -1,4 +1,5 @@
 """单 Add-on 配置/启停/执行分发；供应商 HTTP 使用替身，绝不付费提交。"""
+# ruff: noqa: E402 -- Blender 必须先启用 Add-on，才能导入其运行时模块。
 import json
 import os
 import sys
@@ -14,7 +15,7 @@ assert Path(bpy.utils.user_resource('CONFIG')).resolve() == Path(config_root).re
 sys.path.insert(0, sys.argv[sys.argv.index('--') + 1])
 bpy.ops.preferences.addon_enable(module='partme_blender_mcp')
 assert 'blender_mcp_community' not in bpy.context.preferences.addons
-from partme_blender_mcp import panel, provider_engine
+from partme_blender_mcp import provider_engine
 from partme_blender_mcp.harness.provider_registry import get_provider_registry
 from partme_blender_mcp.harness.provider_tasks import get_provider_task_registry
 from partme_blender_mcp.harness.errors import HarnessError

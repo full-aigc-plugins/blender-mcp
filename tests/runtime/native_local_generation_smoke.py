@@ -1,4 +1,5 @@
 """隔离 Blender + 本机 HTTP fixture 验证生成暂存，不触及真实供应商。"""
+# ruff: noqa: E402 -- Blender 必须先启用 Add-on，才能导入其运行时模块。
 import json
 import os
 import sys

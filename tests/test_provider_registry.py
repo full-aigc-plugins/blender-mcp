@@ -148,11 +148,6 @@ class ProviderRegistryTests(unittest.TestCase):
                 },
             }],
         }
-        server = SimpleNamespace(get_polyhaven_status=lambda: {
-            "enabled": True,
-            "message": "PolyHaven integration is enabled and ready to use.",
-        })
-        fake_bpy = SimpleNamespace(types=SimpleNamespace(blendermcp_server=server))
         context = SimpleNamespace(scene=SimpleNamespace(blendermcp_use_polyhaven=True))
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "providers.json"
@@ -185,8 +180,6 @@ class ProviderRegistryTests(unittest.TestCase):
                 },
             }],
         }
-        server = SimpleNamespace(_get_sketchfab_api_key=lambda: "configured-secret")
-        fake_bpy = SimpleNamespace(types=SimpleNamespace(blendermcp_server=server))
         context = SimpleNamespace(preferences=SimpleNamespace(addons={
             'partme_blender_mcp': SimpleNamespace(preferences=SimpleNamespace(
                 sketchfab_api_key='configured-secret'))}))

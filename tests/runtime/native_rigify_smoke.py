@@ -1,4 +1,5 @@
 """隔离 Blender 中启用内置 Rigify 并生成真实控制骨架；禁止联网下载。"""
+# ruff: noqa: E402 -- Blender 必须先启用 Add-on，才能导入其运行时模块。
 
 import json
 import os

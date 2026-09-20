@@ -1,4 +1,5 @@
 """独立 PartMe 素材查询：Poly Haven 真实只读网络，Sketchfab 不使用真实密钥。"""
+# ruff: noqa: E402 -- Blender 必须先启用 Add-on，才能导入其运行时模块。
 import json
 import sys
 import time

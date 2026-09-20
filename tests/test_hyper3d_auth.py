@@ -1,6 +1,5 @@
 """Hyper3D OAuth 由客户端 CLI 管理，Blender 不接触 OAuth Token。"""
 import subprocess
-import sys
 import unittest
 import importlib.util
 import json

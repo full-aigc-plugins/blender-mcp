@@ -1,4 +1,5 @@
 """真实 Blender 注册双鉴权属性并验证供应商状态，不启动浏览器或网络请求。"""
+# ruff: noqa: E402 -- Blender 必须先启用 Add-on，才能导入其运行时模块。
 import json
 import os
 import sys

@@ -1,4 +1,5 @@
 """真实 Blender 的社区基础查询兼容性；不需要社区 Add-on 或网络。"""
+# ruff: noqa: E402 -- Blender 必须先启用 Add-on，才能导入其运行时模块。
 import json
 import sys
 import bpy

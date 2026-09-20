@@ -1,4 +1,5 @@
 """真实 Blender 中验证打包后的后台轮询；完全替身 HTTP，不写正式偏好。"""
+# ruff: noqa: E402 -- Blender 必须先启用 Add-on，才能导入其运行时模块。
 import json
 import os
 import sys
@@ -78,7 +79,9 @@ try:
     for task_id, cancel in [('done-job', False), ('cancel-job', True)]:
         entered.clear()
         release.clear()
-        engine.ProviderEngine.create_rodin_job_main_site = lambda self, **params: {'subscription_key': task_id}
+        engine.ProviderEngine.create_rodin_job_main_site = (
+            lambda self, task_id=task_id, **params: {'subscription_key': task_id}
+        )
         result = engine.execute({'providerId': 'hyper3d', 'action': 'create_rodin_job',
                                  'risk': 'paid_generation', 'params': {'text_prompt': 'fixture'}})
         local_id = result['submissionId']
