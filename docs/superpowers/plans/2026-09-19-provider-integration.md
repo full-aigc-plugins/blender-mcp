@@ -18,7 +18,7 @@
 - [x] 修复首次客户端 OAuth 只添加不登录的问题：缺失配置执行 `add -> login`，已有同名同地址配置只执行 `login`；仅打开白名单内的 Hyper3D 官方授权 URL。
 - [x] 修正 Hyper3D OAuth 状态语义：客户端持有授权但未完成 MCP 握手时不再计为 `ready` 或供应商可用。
 - [x] 使用当前 Codex `0.153.4` 完成真实浏览器 OAuth，保留原有 MCP 配置；确认授权后可发现 7 个工具且未调用任何生成能力。
-- [ ] 解决或等待 Hyper3D/Codex 对 HTTP 202 空通知响应的 Streamable HTTP 兼容问题，再用真实 Codex 完成连接与工具目录验收；不得用匿名直连目录替代客户端通过证据。
+- [x] 用真实 Codex OAuth 客户端完成只读连接、`rodin_get_status` 调用与 7 项工具目录验收；未调用生成或变更工具。初始化仍会出现 HTTP 202 空响应缺少 `Content-Type` 的兼容告警，但当前客户端重试后可用，后续继续跟踪稳定性。
 - [x] 正式构建移除独立社区 Add-on 产物，仅发布 PartMe 主 Add-on 与 Runtime/平台包。
 
 - [x] 恢复正式六供应商目录并移除精确的界面演示任务。
@@ -27,7 +27,7 @@
 - [x] 补充当前源码命令调用覆盖及真实 Blender/SDK 验证证据。
 - [ ] 完成真实外部供应商、Rigify、目标平台及客户端剩余门禁；Rigify 已在隔离 Blender 5.2.1 启用内置扩展并真实生成 221 个控制骨架对象，全程 `allowDownload=false`，剩余真实外部供应商、Windows 和三客户端门禁未完成。
 - [ ] 完成最终 UI 和正式安装重启复核。
-- [ ] 新版本发布后再更新插件 runtime lock、插件版本与市场清单。
+- [x] 发布 `blender-mcp 0.5.2` 后更新并发布 `blender-design 0.11.2`，同步 runtime lock、插件版本和中央市场 Blender 条目；Codex 安装缓存与 Blender 磁盘 Add-on 已核对。
 - [x] 将供应商网络请求移出 Blender 主线程：提交、自动轮询、搜索、预览、手动查询、素材下载及生成结果解析/下载均使用有界后台任务；Blender 5.2.1 打包后 fixture 验证下载阻塞期间主线程可改帧，本地终止清除临时文件且晚到结果不回写。
 - [x] 将 Poly Haven/Sketchfab 搜索与预览、Rodin/混元手动状态查询移出 Blender 主线程；新增有界 `provider.query_result`，完成、失败、取消和晚到结果均有确定状态。
 - [ ] 完成原生自动轮询调度、取消后的下载/导入阻断以及超时恢复；当前自动轮询、超时失败、下载终止和晚到回执阻断已有单元/真实 Blender fixture，仍需用真实供应商证明完整生成→下载→事务导入链及远端超时恢复，不能以替身或手动查询通过替代。
@@ -45,9 +45,9 @@
 - [x] 修复 `PluginMcpAdapter` 跨页唯一性并增加真实适配器测试。
 - [x] 为 `scripts/harness/` 建立声明式差分门禁。
 - [x] 更新活动 README、仓库 URL 和验证状态。
-- [ ] 构建 `blender-mcp 0.5.1` 最终资产，更新插件 runtime lock。
-- [ ] 运行单元、分发、真实 Blender 与客户端矩阵验收。
-- [ ] 发布 runtime、插件和市场清单；分别记录远端与安装证据。
+- [x] 构建并验证 `blender-mcp 0.5.2` 最终资产，更新插件 runtime lock。
+- [ ] 运行单元、分发、真实 Blender 与客户端矩阵验收；Runtime、隔离 Blender 与 Codex 已通过，ZCode/Kimi 新版本、Windows及前台重启仍待完成。
+- [x] 发布 runtime、插件和市场清单，并记录远端与 Codex/Blender 磁盘安装证据。
 
 ## V4.2 真实联动增量
 
