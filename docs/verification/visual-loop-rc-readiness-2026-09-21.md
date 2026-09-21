@@ -124,3 +124,16 @@ that one read-only tool.
 
 This is macOS Codex and Claude Code evidence only. ZCode, Kimi, Windows, and the
 real target-image score run remain open, so task 4.4 is not checked.
+
+Kimi Code `0.43.1` was then started with an isolated `KIMI_CODE_HOME`, the same
+`0.13.1` launcher, and only the PartMe MCP declaration. The client stopped
+before model/tool execution with its account-level five-hour usage quota
+exhausted. This is a client-account blocker, not a successful or failed Blender
+MCP call.
+
+ZCode `3.14.1` is installed as a desktop application but has no standalone
+`zcode` CLI in `PATH`. Its installed plugin registry still pins Blender Design
+`0.12.0`. The live application was already running an unrelated user task, so
+the acceptance did not mutate or restart it merely to force a plugin refresh.
+ZCode therefore remains unverified until that task is clear and the client has
+updated Blender Design to `0.13.1`.
