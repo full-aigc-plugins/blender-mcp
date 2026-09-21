@@ -76,8 +76,39 @@ the regression evidence for that correction.
 
 ## Remaining release gates
 
-- Keep Fal optional behind a separate ProviderAdapter and a user-approved cost
-  ceiling.
 - Run Codex, Claude Code, ZCode and Kimi acceptance on macOS and Windows.
 - Complete one reproducible real target-image run from an initial score to
   `>= 8` before claiming production readiness.
+
+## Fal decision
+
+Task 4.3 is complete as a negative integration decision. The visual loop is a
+deterministic state machine and does not call a visual model itself; verdicts
+come from a human or client-side Judge. Therefore this RC does not need Fal and
+must not add a paid dependency merely to close the checklist. If a later change
+requires Fal, it remains a separate `ProviderAdapter` with an explicit cost
+ceiling, uncertain-submit recovery, polling, and remote cancellation semantics.
+
+## Client acceptance in progress
+
+The first real Codex run exposed a downstream distribution defect rather than a
+runtime transport defect: Blender Design `0.13.0` declared `python` as its MCP
+command, but the macOS acceptance host only exposed `python3`. Blender Design
+`0.13.1` now launches a cross-platform Node shim which discovers Python
+3.11-3.13 (`python3.x`/`python3`/`python` on macOS and Linux, `py -3.x` on
+Windows), honors `PARTME_BLENDER_MCP_PYTHON`, and recovers dead bootstrap lock
+owners. Its 508-test suite, distribution validator, remote CI, release tag, and
+marketplace update all passed.
+
+After refreshing the Codex marketplace and cache, a real Codex CLI session used
+the installed `0.13.1+codex.20260921` plugin to call
+`blender_connection_status` against isolated Blender 5.2.1. The structured
+result reported `connected: true`, `sceneRevision: 0`, and `transport: unix`.
+The run used an isolated MCP configuration because the user's global Codex
+profile currently contains unrelated failing remote servers and more Skills
+than the client context budget permits. An explicit
+`PARTME_BLENDER_DESCRIPTOR` selected the isolated acceptance Blender because
+another user Blender session was also active.
+
+This is macOS Codex evidence only. Claude Code, ZCode, Kimi, Windows, and the
+real target-image score run remain open, so task 4.4 is not checked.
