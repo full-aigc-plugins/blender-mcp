@@ -8,7 +8,7 @@ import unittest
 class PlaybackRedrawTests(unittest.TestCase):
     def setUp(self):
         path = Path(__file__).parents[1] / 'addon/partme_blender_mcp/panel.py'
-        source = path.read_text()
+        source = path.read_text(encoding="utf-8")
         node = next(n for n in ast.parse(source).body
                     if isinstance(n, ast.FunctionDef) and n.name == '_refresh_playback_ui')
         self.calls = []

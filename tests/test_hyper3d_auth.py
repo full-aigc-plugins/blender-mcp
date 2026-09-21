@@ -5,6 +5,8 @@ import importlib.util
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 from unittest.mock import Mock
 
 SOURCE = Path(__file__).parents[1] / 'addon/partme_blender_mcp/hyper3d_auth.py'
@@ -136,7 +138,8 @@ class Hyper3dAuthTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             url = oauth_success_page_url(directory)
-            page = Path(url.removeprefix('file://')).read_text(encoding='utf-8')
+            page_path = Path(url2pathname(urlparse(url).path))
+            page = page_path.read_text(encoding='utf-8')
 
         self.assertIn('display:grid', page)
         self.assertIn('place-items:center', page)

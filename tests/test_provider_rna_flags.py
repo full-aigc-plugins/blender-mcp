@@ -9,7 +9,7 @@ import unittest
 class RnaFlagTests(unittest.TestCase):
     def test_flag_default_does_not_read_single_enum_default(self):
         path = Path(__file__).parents[1] / 'addon/partme_blender_mcp/provider_engine.py'
-        cls = next(n for n in ast.parse(path.read_text()).body
+        cls = next(n for n in ast.parse(path.read_text(encoding="utf-8")).body
                    if isinstance(n, ast.ClassDef) and n.name == 'ProviderEngine')
         method = next(n for n in cls.body if isinstance(n, ast.FunctionDef)
                       and n.name == '_describe_property')

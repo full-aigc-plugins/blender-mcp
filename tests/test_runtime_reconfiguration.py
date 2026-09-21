@@ -74,7 +74,7 @@ class RuntimeReconfigurationTests(unittest.TestCase):
                     runtime_mode="connector",
                 )
 
-            descriptor = json.loads(descriptor_path.read_text())
+            descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
             self.assertIs(self.session.dispatch, self.new_dispatch)
             self.assertIs(self.session.execution_policy, policy)
             self.assertEqual(descriptor["token"], "private-token")
@@ -100,7 +100,7 @@ class RuntimeReconfigurationTests(unittest.TestCase):
                 )
 
             self.assertIs(self.session.dispatch, self.old_dispatch)
-            self.assertEqual(json.loads(descriptor_path.read_text()), original)
+            self.assertEqual(json.loads(descriptor_path.read_text(encoding="utf-8")), original)
 
     def test_reconfigure_rejects_active_transaction_and_pending_approval(self):
         with tempfile.TemporaryDirectory() as folder:

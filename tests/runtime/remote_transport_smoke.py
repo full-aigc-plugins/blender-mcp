@@ -348,11 +348,11 @@ for process in (stdio_client, http_client, http_client_2, reconnect_client, sse_
     process.stdout.close()
     process.stderr.close()
 
-report["httpClient"] = json.loads(http_report.read_text())
-report["httpClient2"] = json.loads(http_report_2.read_text())
-report["httpReconnectClient"] = json.loads(reconnect_report.read_text())
-report["stdioClient"] = json.loads(stdio_report.read_text())
-report["sseClient"] = json.loads(sse_report.read_text())
+report["httpClient"] = json.loads(http_report.read_text(encoding="utf-8"))
+report["httpClient2"] = json.loads(http_report_2.read_text(encoding="utf-8"))
+report["httpReconnectClient"] = json.loads(reconnect_report.read_text(encoding="utf-8"))
+report["stdioClient"] = json.loads(stdio_report.read_text(encoding="utf-8"))
+report["sseClient"] = json.loads(sse_report.read_text(encoding="utf-8"))
 report["revokeResult"] = list(bpy.ops.partme_blender.revoke_connector())
 bpy.ops.preferences.addon_disable(module="partme_blender_mcp")
 report["addonDisabled"] = "partme_blender_mcp" not in bpy.context.preferences.addons

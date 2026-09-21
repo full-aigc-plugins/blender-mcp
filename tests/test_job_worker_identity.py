@@ -12,7 +12,7 @@ class WorkerIdentityTests(unittest.TestCase):
         stale = ModuleType("partme_blender_mcp.harness.frame_worker")
         stale.compose_video = stale.render_frame_sequence = lambda: None
         worker = Path(__file__).parents[1] / "src/partme_blender_mcp/harness/job_worker.py"
-        tree = ast.parse(worker.read_text())
+        tree = ast.parse(worker.read_text(encoding="utf-8"))
         declarations = []
         for node in tree.body:
             if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "spec_path"

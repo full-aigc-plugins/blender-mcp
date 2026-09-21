@@ -62,7 +62,7 @@ def save_coverage():
     result = passed
     if deferred:
         receipt = output / "acceptance.json"
-        result = receipt.is_file() and json.loads(receipt.read_text()).get("passed") is True
+        result = receipt.is_file() and json.loads(receipt.read_text(encoding="utf-8")).get("passed") is True
     (output / "measured-coverage.json").write_text(json.dumps({
         "case": case.name, "passed": result, "source": str(root / "src"),
         "catalog": sorted(set(catalog)), "attempts": attempts,

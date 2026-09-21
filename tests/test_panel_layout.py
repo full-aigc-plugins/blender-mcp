@@ -10,7 +10,7 @@ import unittest
 SOURCE = Path(__file__).parents[1] / "addon/partme_blender_mcp/panel.py"
 HELPERS = {"_sidebar_width", "_small_actions", "_wrapped_label"}
 namespace = {"unicodedata": unicodedata}
-tree = ast.parse(SOURCE.read_text())
+tree = ast.parse(SOURCE.read_text(encoding="utf-8"))
 exec(compile(ast.Module(body=[node for node in tree.body
                              if isinstance(node, ast.FunctionDef) and node.name in HELPERS],
                         type_ignores=[]), str(SOURCE), "exec"), namespace)
@@ -32,7 +32,7 @@ class Layout:
 
 class PanelLayoutTests(unittest.TestCase):
     def test_work_tab_preserves_design_in_narrow_sidebar(self):
-        source = SOURCE.read_text()
+        source = SOURCE.read_text(encoding="utf-8")
         draw = ast.get_source_segment(source, next(n for n in ast.parse(source).body
             if isinstance(n, ast.FunctionDef) and n.name == '_draw_work_tab'))
         self.assertNotIn('if compact:', draw)
@@ -45,7 +45,7 @@ class PanelLayoutTests(unittest.TestCase):
         self.assertIn('icon="PAUSE" if playing else "PLAY", depress=playing', draw)
 
     def test_view_cards_share_one_outer_box_without_inner_button_borders(self):
-        source = SOURCE.read_text()
+        source = SOURCE.read_text(encoding="utf-8")
         node = next(n for n in ast.parse(source).body
                     if isinstance(n, ast.FunctionDef) and n.name == '_draw_view_shortcuts')
         cards = []
@@ -76,13 +76,13 @@ class PanelLayoutTests(unittest.TestCase):
             self.assertTrue(card.actions[1].options['text'])
 
     def test_assets_tab_has_only_one_short_notice(self):
-        source = SOURCE.read_text()
+        source = SOURCE.read_text(encoding="utf-8")
         self.assertNotIn('layout.label(text="素材库", icon="ASSET_MANAGER")', source)
         self.assertIn('layout.label(text="自动搜索，下载仅写授权目录", icon="INFO")', source)
         self.assertNotIn('已启用供应商参与自动搜索，下载写入授权目录', source)
 
     def test_access_tab_uses_compact_single_line_controls(self):
-        source = SOURCE.read_text()
+        source = SOURCE.read_text(encoding="utf-8")
         transport = ast.get_source_segment(source, next(n for n in tree.body
             if isinstance(n, ast.FunctionDef) and n.name == '_draw_remote_transport'))
         access = ast.get_source_segment(source, next(n for n in tree.body
@@ -98,7 +98,7 @@ class PanelLayoutTests(unittest.TestCase):
         self.assertIn('auth.label(text="更换密钥前关闭 HTTP/SSE"', access)
 
     def test_provider_toggle_precedes_identity_and_uses_small_left_slot(self):
-        source = ast.get_source_segment(SOURCE.read_text(), next(
+        source = ast.get_source_segment(SOURCE.read_text(encoding="utf-8"), next(
             node for node in tree.body if isinstance(node, ast.FunctionDef)
             and node.name == "_draw_provider_rows"))
         self.assertLess(source.index('PARTMEBLENDER_OT_set_provider_enabled.bl_idname'),
@@ -109,7 +109,7 @@ class PanelLayoutTests(unittest.TestCase):
         self.assertIn('and not hyper3d_provider', source)
 
     def test_hyper3d_oauth_is_visible_on_model_card(self):
-        source = ast.get_source_segment(SOURCE.read_text(), next(
+        source = ast.get_source_segment(SOURCE.read_text(encoding="utf-8"), next(
             node for node in tree.body if isinstance(node, ast.FunctionDef)
             and node.name == "_draw_provider_rows"))
         self.assertIn('text="MCP OAuth"', source)

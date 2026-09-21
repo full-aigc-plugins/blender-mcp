@@ -77,7 +77,7 @@ class ProviderAssetStrategyTests(unittest.TestCase):
     def test_automatic_asset_strategy_is_audited_and_defaults_on(self):
         policy = ExecutionPolicy.from_dict({
             "mode": "auto_with_budget",
-            "approvedOutputRoot": "/tmp/partme-output",
+            "approvedOutputRoot": str((Path.cwd() / ".tmp/partme-output").resolve()),
         })
         self.assertEqual(policy.asset_strategy, "auto_search_generate")
         self.assertEqual(policy.to_audit_dict()["assetStrategy"], "auto_search_generate")

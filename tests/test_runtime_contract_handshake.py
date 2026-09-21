@@ -56,7 +56,7 @@ class RuntimeContractHandshakeTests(unittest.TestCase):
     def test_legacy_descriptor_fails_with_actionable_version_error(self):
         with tempfile.TemporaryDirectory() as folder:
             path = self._write_descriptor(folder)
-            descriptor = json.loads(path.read_text())
+            descriptor = json.loads(path.read_text(encoding="utf-8"))
             for field in ("runtimeVersion", "harnessProtocolVersion", "capabilities", "capabilitiesSha256"):
                 descriptor.pop(field)
             path.write_text(json.dumps(descriptor))

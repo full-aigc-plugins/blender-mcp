@@ -149,13 +149,13 @@ class ReleasePackageTests(unittest.TestCase):
     def test_release_builder_creates_verified_installers(self):
         self.assertIn(
             f'version="{VERSION}"',
-            (ROOT / "installers/macos/install_partme_blender_mcp.command").read_text(),
+            (ROOT / "installers/macos/install_partme_blender_mcp.command").read_text(encoding="utf-8"),
         )
         self.assertIn(
             f'$ReleaseVersion = "{VERSION}"',
-            (ROOT / "installers/windows/install_partme_blender_mcp.ps1").read_text(),
+            (ROOT / "installers/windows/install_partme_blender_mcp.ps1").read_text(encoding="utf-8"),
         )
-        self.assertIn(VERSION, (ROOT / "installers/README-FIRST.txt").read_text())
+        self.assertIn(VERSION, (ROOT / "installers/README-FIRST.txt").read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory() as directory:
             result = subprocess.run(
                 [sys.executable, str(ROOT / "scripts/package_release.py"), "--output", directory],
@@ -175,13 +175,13 @@ class ReleasePackageTests(unittest.TestCase):
             self.assertEqual({path.name for path in output.iterdir()}, names)
             self.assertFalse((output / "partme-community-addon-2.0.0.zip").exists())
             sums = {}
-            for line in (output / "SHA256SUMS.txt").read_text().splitlines():
+            for line in (output / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines():
                 digest, name = line.split("  ", 1)
                 sums[name] = digest
             for name in names - {"SHA256SUMS.txt"}:
                 digest = hashlib.sha256((output / name).read_bytes()).hexdigest()
                 self.assertEqual(sums[name], digest, name)
-            manifest = json.loads((output / "runtime-manifest.json").read_text())
+            manifest = json.loads((output / "runtime-manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["version"], VERSION)
             self.assertEqual(manifest["product"], "PartMe Blender MCP")
             self.assertEqual(manifest["status"], "prerelease")

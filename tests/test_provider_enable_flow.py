@@ -13,7 +13,7 @@ SOURCE = Path(__file__).parents[1] / 'addon/partme_blender_mcp/panel.py'
 
 
 def operator_class(name, namespace):
-    node = next(n for n in ast.parse(SOURCE.read_text()).body
+    node = next(n for n in ast.parse(SOURCE.read_text(encoding="utf-8")).body
                 if isinstance(n, ast.ClassDef) and n.name == name)
     node.body = [n for n in node.body if not isinstance(n, ast.AnnAssign)]
     namespace['__package__'] = 'partme_blender_mcp'

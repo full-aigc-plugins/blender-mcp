@@ -157,10 +157,10 @@ class OfficialSdkServerTests(unittest.IsolatedAsyncioTestCase):
                 lambda: None, lambda _message: None,
             ))
             await entered.wait()
-            self.assertEqual(json.loads(status_file.read_text())["clients"], 1)
+            self.assertEqual(json.loads(status_file.read_text(encoding="utf-8"))["clients"], 1)
             release.set()
             await task
-            self.assertEqual(json.loads(status_file.read_text())["clients"], 0)
+            self.assertEqual(json.loads(status_file.read_text(encoding="utf-8"))["clients"], 0)
 
 
 if __name__ == "__main__":

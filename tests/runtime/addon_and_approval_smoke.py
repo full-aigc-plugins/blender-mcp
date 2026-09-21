@@ -161,7 +161,7 @@ settings_result = bpy.ops.partme_blender.execution_settings(
     execution_mode="auto_with_budget",
     asset_strategy="auto_search_generate",
 )
-descriptor_after_settings = json.loads(handle.descriptor_path.read_text())
+descriptor_after_settings = json.loads(handle.descriptor_path.read_text(encoding="utf-8"))
 report["executionSettingsResult"] = list(settings_result)
 report["executionSettingsLive"] = (
     handle.session is session

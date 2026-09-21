@@ -88,7 +88,7 @@ class DenialAndPendingTests(unittest.TestCase):
         calls = []
         policy = ExecutionPolicy.from_dict({
             "mode": "auto_with_budget",
-            "approvedOutputRoot": "/tmp/partme-output",
+            "approvedOutputRoot": str((ROOT / ".tmp/partme-output").resolve()),
             "assetStrategy": "auto_search_generate",
         })
         session = HarnessSession(
@@ -116,7 +116,7 @@ class DenialAndPendingTests(unittest.TestCase):
         calls = []
         policy = ExecutionPolicy.from_dict({
             "mode": "auto_with_budget",
-            "approvedOutputRoot": "/tmp/partme-output",
+            "approvedOutputRoot": str((ROOT / ".tmp/partme-output").resolve()),
             "assetStrategy": "auto_search_generate",
             "downstreamBudgetLimit": "5.00",
         })
@@ -152,7 +152,7 @@ class DenialAndPendingTests(unittest.TestCase):
     def test_configured_budget_requires_an_estimate_before_automatic_generation(self):
         policy = ExecutionPolicy.from_dict({
             "mode": "auto_with_budget",
-            "approvedOutputRoot": "/tmp/partme-output",
+            "approvedOutputRoot": str((ROOT / ".tmp/partme-output").resolve()),
             "assetStrategy": "auto_search_generate",
             "downstreamBudgetLimit": "5.00",
         })

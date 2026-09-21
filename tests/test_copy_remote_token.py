@@ -8,7 +8,7 @@ import unittest
 class CopyTokenTests(unittest.TestCase):
     def test_copy_and_missing_token(self):
         source = Path(__file__).parents[1] / 'addon/partme_blender_mcp/panel.py'
-        tree = ast.parse(source.read_text())
+        tree = ast.parse(source.read_text(encoding="utf-8"))
         node = next((n for n in tree.body if isinstance(n, ast.ClassDef)
                      and n.name == 'PARTMEBLENDER_OT_copy_remote_token'), None)
         self.assertIsNotNone(node, '需要真正的复制 Token operator')
