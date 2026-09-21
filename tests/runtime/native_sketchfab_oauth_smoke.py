@@ -11,7 +11,7 @@ assert config and Path(config).is_dir()
 sys.path.insert(0, sys.argv[sys.argv.index("--") + 1])
 bpy.ops.preferences.addon_enable(module="partme_blender_mcp")
 
-from partme_blender_mcp.harness.provider_registry import get_provider_registry
+from partme_blender_mcp.harness.provider_registry import get_provider_registry  # noqa: E402
 
 preferences = bpy.context.preferences.addons["partme_blender_mcp"].preferences
 items = preferences.bl_rna.properties["sketchfab_auth_mode"].enum_items

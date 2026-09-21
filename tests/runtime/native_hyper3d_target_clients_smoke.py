@@ -11,7 +11,7 @@ assert config and Path(config).is_dir()
 sys.path.insert(0, sys.argv[sys.argv.index("--") + 1])
 bpy.ops.preferences.addon_enable(module="partme_blender_mcp")
 
-from partme_blender_mcp.hyper3d_auth import HYPER3D_MCP_URL, sync_preferences
+from partme_blender_mcp.hyper3d_auth import HYPER3D_MCP_URL, sync_preferences  # noqa: E402
 
 preferences = bpy.context.preferences.addons["partme_blender_mcp"].preferences
 items = preferences.bl_rna.properties["hyper3d_oauth_client"].enum_items

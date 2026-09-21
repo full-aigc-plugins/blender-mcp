@@ -3,7 +3,7 @@ import importlib.util
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 

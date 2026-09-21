@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-21
+
+### Fixed
+
+- Native Blender smoke scripts now explicitly mark their post-enable imports, and the
+  TokenHub test removes an unused import so the cross-platform Ruff gate passes.
+
 ## [0.6.0] - 2026-09-21
 
 ### Added
@@ -211,7 +218,8 @@ All notable changes to this project are documented here. The format follows
 - Cross-client guides (Codex, Claude Desktop, Claude Code, MiniMax Design, Cursor, generic
   MCP, macOS, Windows) with a documentation contract test.
 
-[Unreleased]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.5.1...v0.5.2
