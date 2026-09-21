@@ -1,7 +1,7 @@
 # PartMe Blender MCP 图文安装中心
 
 > 当前阶段：**预发布文档**  
-> Runtime Release：`v0.7.0-rc.1` 候选版
+> Runtime Release：`v0.7.0-rc.2` 候选版
 > 文档核验日期：2026-09-15
 
 PartMe Blender MCP 让多个 MCP 客户端通过同一个安全 Harness 操作 Blender。完整安装永远分两步：
@@ -43,8 +43,8 @@ flowchart LR
 下载文件：
 
 ```text
-partme-blender-mcp-addon-0.7.0-rc.1.zip
-partme-blender-mcp-runtime-0.7.0-rc.1.zip
+partme-blender-mcp-addon-0.7.0-rc.2.zip
+partme-blender-mcp-runtime-0.7.0-rc.2.zip
 SHA256SUMS.txt
 ```
 

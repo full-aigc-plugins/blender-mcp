@@ -15,6 +15,7 @@ from .snapshot import BlenderCheckpointStore
 from .transport import Endpoint, JsonLineServer, choose_endpoint
 from .transaction import TransactionManager
 from .errors import HarnessError
+from .runtime_contract import build_runtime_contract
 
 
 @dataclass
@@ -46,7 +47,7 @@ class HarnessRuntime:
         if self.executor.pending_count:
             raise HarnessError("RECONFIGURATION_BUSY", "wait for the queued command to finish")
 
-        dispatch, output_root, asset_roots = prepare_session_reconfiguration(
+        dispatch, capabilities, output_root, asset_roots = prepare_session_reconfiguration(
             self.bpy_module,
             self.session,
             runtime_mode=runtime_mode,
@@ -66,6 +67,7 @@ class HarnessRuntime:
         descriptor["outputRoot"] = str(output_root)
         descriptor["assetRoots"] = [str(value) for value in asset_roots]
         descriptor["executionPolicy"] = execution_policy.to_audit_dict()
+        descriptor.update(build_runtime_contract(capabilities))
         temporary = self.descriptor_path.with_name(
             f".{self.descriptor_path.name}.{secrets.token_hex(8)}.tmp"
         )
@@ -191,6 +193,7 @@ def start_harness(
                 "outputRoot": str((approved_output_root or runtime_dir / "outputs").resolve()),
                 "assetRoots": [str(Path(value).resolve()) for value in approved_asset_roots],
                 "executionPolicy": session.execution_policy.to_audit_dict(),
+                **build_runtime_contract(session.command_capabilities),
             },
             sort_keys=True,
         )

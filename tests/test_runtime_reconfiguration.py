@@ -61,7 +61,10 @@ class RuntimeReconfigurationTests(unittest.TestCase):
                 "allowDesignedProxies": True,
                 "assetStrategy": "auto_search_generate",
             })
-            registry = SimpleNamespace(dispatch=self.new_dispatch)
+            registry = SimpleNamespace(
+                dispatch=self.new_dispatch,
+                capabilities=lambda: [{"command": "session.status", "risk": "read"}],
+            )
 
             with patch("partme_blender_mcp.harness.runtime.build_registry", return_value=registry):
                 result = runtime.reconfigure(

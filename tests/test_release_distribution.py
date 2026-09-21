@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.7.0-rc.1"
+VERSION = "0.7.0-rc.2"
 
 
 class RepositoryStructureTests(unittest.TestCase):
@@ -147,6 +147,15 @@ class RuntimeContractTests(unittest.TestCase):
 
 class ReleasePackageTests(unittest.TestCase):
     def test_release_builder_creates_verified_installers(self):
+        self.assertIn(
+            f'version="{VERSION}"',
+            (ROOT / "installers/macos/install_partme_blender_mcp.command").read_text(),
+        )
+        self.assertIn(
+            f'$ReleaseVersion = "{VERSION}"',
+            (ROOT / "installers/windows/install_partme_blender_mcp.ps1").read_text(),
+        )
+        self.assertIn(VERSION, (ROOT / "installers/README-FIRST.txt").read_text())
         with tempfile.TemporaryDirectory() as directory:
             result = subprocess.run(
                 [sys.executable, str(ROOT / "scripts/package_release.py"), "--output", directory],

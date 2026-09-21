@@ -116,9 +116,19 @@ async def main():
                 'path': 'remote/{report_path.stem}.png', 'width': 32, 'height': 24,
                 '_transactionId': 'remote-{report_path.stem}',
             }})
+            floor = await session.call_tool('blender_validation_floor_penetration', {{
+                'object': {{'name': 'Cube'}}, 'frameStart': 1, 'frameEnd': 2,
+                'floorZ': -1, 'limit': 0,
+            }})
+            motion = await session.call_tool('blender_validation_motion_discontinuity', {{
+                'object': {{'name': 'Cube'}}, 'frameStart': 1, 'frameEnd': 2,
+                'positionLimit': 0.1, 'angleLimitDegrees': 1,
+            }})
             initialized_payload = initialized.model_dump(by_alias=True)
             result_payload = result.model_dump(by_alias=True)
             visual_payload = visual.model_dump(by_alias=True)
+            floor_payload = floor.model_dump(by_alias=True)
+            motion_payload = motion.model_dump(by_alias=True)
             images = [block for block in visual_payload['content'] if block.get('type') == 'image']
             Path({str(report_path)!r}).write_text(json.dumps({{
                 'server': initialized_payload['serverInfo']['name'],
@@ -131,6 +141,12 @@ async def main():
                     'imageCount': len(images),
                     'mimeType': images[0]['mimeType'] if images else None,
                     'bytes': len(base64.b64decode(images[0]['data'])) if images else 0,
+                }},
+                'quality': {{
+                    'floorIsError': floor_payload['isError'],
+                    'floorPassed': floor_payload['structuredContent']['result']['passed'],
+                    'motionIsError': motion_payload['isError'],
+                    'motionPassed': motion_payload['structuredContent']['result']['passed'],
                 }},
             }}))
             await anyio.sleep({hold_seconds!r})
@@ -370,6 +386,10 @@ for key in ("stdioClient", "httpClient", "httpClient2", "httpReconnectClient", "
 assert report['stdioClient']['catalog'] == report['httpClient']['catalog'] == report['sseClient']['catalog']
 assert report['httpClient2']['catalog'] == report['stdioClient']['catalog']
 assert report['httpReconnectClient']['catalog'] == report['stdioClient']['catalog']
+assert report['httpClient']['quality'] == {
+    'floorIsError': False, 'floorPassed': True,
+    'motionIsError': False, 'motionPassed': True,
+}
 assert report['activeClients'][0] >= 2 and report['activeClients'][1] >= 1
 assert report['httpReconnectClients'] >= 1
 expected_scheme = 'https://' if report['tlsEnabled'] else 'http://'

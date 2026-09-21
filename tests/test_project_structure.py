@@ -274,6 +274,28 @@ class CatalogIntegrityTests(unittest.TestCase):
         self.assertEqual(generated["url"]["type"], "string")
         self.assertEqual(generated["params"]["type"], "object")
 
+    def test_quality_object_arguments_are_structured_locators(self):
+        sys.path.insert(0, str(ROOT / "src"))
+        try:
+            from partme_blender_mcp.harness.mcp_adapter import build_tool_catalog
+            catalog = {tool["name"]: tool for tool in build_tool_catalog()}
+        finally:
+            sys.path.pop(0)
+        for tool_name in (
+            "blender_validation_floor_penetration",
+            "blender_validation_motion_discontinuity",
+            "blender_validation_prop_handoff",
+        ):
+            locator = catalog[tool_name]["inputSchema"]["properties"]["object"]
+            self.assertEqual(locator["type"], "object", tool_name)
+            self.assertEqual(set(locator["properties"]), {"name", "objectId"}, tool_name)
+            self.assertFalse(locator["additionalProperties"], tool_name)
+            self.assertEqual(
+                locator["anyOf"],
+                [{"required": ["name"]}, {"required": ["objectId"]}],
+                tool_name,
+            )
+
     def test_every_public_tool_property_has_a_json_type(self):
         sys.path.insert(0, str(ROOT / "src"))
         try:

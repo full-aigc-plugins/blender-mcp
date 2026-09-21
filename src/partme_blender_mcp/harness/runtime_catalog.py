@@ -13,6 +13,16 @@ from .commands.validation import closed_arguments
 
 VECTOR = {'type': 'array', 'minItems': 3, 'maxItems': 3,
           'items': {'type': 'number'}, 'description': 'Three finite numbers; rotation uses radians'}
+OBJECT_LOCATOR = {
+    'type': 'object',
+    'properties': {
+        'name': {'type': 'string', 'minLength': 1},
+        'objectId': {'type': 'string', 'pattern': '^obj_[0-9a-f]{32}$'},
+    },
+    'anyOf': [{'required': ['name']}, {'required': ['objectId']}],
+    'additionalProperties': False,
+    'description': 'Stable Blender object locator by name, objectId, or both',
+}
 FIELDS = {
     **{key: {'type': 'string'} for key in (
         'name', 'newName', 'object', 'child', 'parent', 'material', 'primitive',
@@ -185,6 +195,15 @@ COMMAND_FIELD_SCHEMAS = {
                  'pattern': r'^(?!/)(?!.*(?:^|/)\.\.(?:/|$)).+\.(?:png|jpe?g)$'},
         'width': {'type': 'integer', 'minimum': 1, 'maximum': 8192},
         'height': {'type': 'integer', 'minimum': 1, 'maximum': 8192},
+    },
+    'validation.floor_penetration': {
+        'object': OBJECT_LOCATOR,
+    },
+    'validation.motion_discontinuity': {
+        'object': OBJECT_LOCATOR,
+    },
+    'validation.prop_handoff': {
+        'object': OBJECT_LOCATOR,
     },
     'visual_loop.create': {
         'loopId': {'type': 'string', 'pattern': r'^[A-Za-z0-9_-]{1,80}$'},

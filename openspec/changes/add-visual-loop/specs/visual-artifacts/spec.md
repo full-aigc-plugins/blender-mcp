@@ -47,3 +47,25 @@ MCP 适配器 SHALL 在截图或预览成功结果中附加标准图片内容块
 #### Scenario: 图片在返回前被替换
 - **WHEN** 适配器读取图片时发现路径越界、哈希不一致或大小超限
 - **THEN** 适配器返回安全错误而不发送图片字节
+
+### Requirement: Add-on 与 Runtime 必须协商同一套能力契约
+Add-on SHALL 在私有会话描述符中公布产品版本、Harness 协议版本、排序后的命令清单及其 SHA-256；Runtime SHALL 在转发前验证这些字段。
+
+#### Scenario: Add-on 版本过旧
+- **WHEN** Runtime 发现描述符缺少版本/能力元数据，或 Add-on 版本与 Runtime 不一致
+- **THEN** 调用在发送到 Blender 前以 `ADDON_RUNTIME_VERSION_MISMATCH` 失败，不将底层 `UNKNOWN_COMMAND` 暴露给客户端
+
+#### Scenario: 命令清单被篡改或缺失
+- **WHEN** 能力清单哈希不匹配，或客户端调用当前 Add-on 未声明的命令
+- **THEN** Runtime 返回明确的能力契约错误且不转发请求
+
+### Requirement: 质量检查必须使用结构化对象定位器
+`validation.floor_penetration`、`validation.motion_discontinuity` 和 `validation.prop_handoff` SHALL 把 `object` 声明为对象定位器，与 `ObjectResolver` 的运行时契约一致。
+
+#### Scenario: 以名称检查地面穿插
+- **WHEN** 客户端传入 `{"object":{"name":"Hero"}}`
+- **THEN** MCP Schema 接受该输入并将定位器原样传给 Harness
+
+#### Scenario: 传入旧字符串参数
+- **WHEN** 客户端仅传入 `{"object":"Hero"}`
+- **THEN** 请求在 MCP Schema 边界被拒绝，而不是到 Blender 内才失败

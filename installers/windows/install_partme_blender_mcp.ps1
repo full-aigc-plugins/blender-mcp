@@ -3,7 +3,7 @@ param(
   [switch]$Version
 )
 $ErrorActionPreference = "Stop"
-$ReleaseVersion = "0.5.1"
+$ReleaseVersion = "0.7.0-rc.2"
 if ($Version) {
   Write-Output "PartMe Blender MCP installer $ReleaseVersion"
   exit 0

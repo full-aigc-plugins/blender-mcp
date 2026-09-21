@@ -11,7 +11,10 @@ from partme_blender_mcp.harness.mcp_adapter import DescriptorBridge, McpAdapterE
 class BridgeDisconnectTests(unittest.TestCase):
     def test_refused_socket_is_reported_as_disconnected(self):
         bridge = DescriptorBridge(descriptor_path="unused")
-        descriptor = {"sessionId": "test", "transport": "unix", "address": "/tmp/missing.sock", "token": "secret"}
+        descriptor = {
+            "sessionId": "test", "transport": "unix", "address": "/tmp/missing.sock", "token": "secret",
+            "runtimeVersion": "test", "capabilities": [{"command": "session.status", "risk": "read"}],
+        }
         with patch.object(bridge, "_load", return_value=descriptor), patch.object(
             bridge, "sender", side_effect=ConnectionRefusedError("sensitive endpoint")
         ):

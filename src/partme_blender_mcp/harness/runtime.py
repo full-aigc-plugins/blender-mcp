@@ -634,6 +634,7 @@ def create_session(bpy_module, session_id: str, *, runtime_mode: str = "managed"
         revision_provider=lambda: holder["session"].scene_revision,
     )
     session = HarnessSession(session_id, dispatch=registry.dispatch, transactions=transactions, execution_policy=policy)
+    session.command_capabilities = registry.capabilities()
     holder["session"] = session
     return session
 
@@ -673,4 +674,4 @@ def prepare_session_reconfiguration(
         approved_asset_roots=asset_roots,
         revision_provider=lambda: session.scene_revision,
     )
-    return registry.dispatch, output_root, asset_roots
+    return registry.dispatch, registry.capabilities(), output_root, asset_roots

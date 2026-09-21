@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.0-rc.2] - 2026-09-21
+
+### Added
+
+- Add-on/Runtime contract negotiation records the exact release version, Harness
+  protocol, normalized command manifest and SHA-256 in every private session descriptor.
+- Connection diagnostics reject stale, tampered or incomplete Add-on contracts before a
+  tool request reaches Blender.
+
+### Fixed
+
+- Floor-penetration, motion-discontinuity and prop-handoff tools now publish the same
+  structured object-locator schema consumed by `ObjectResolver`.
+- A stale Add-on now reports `ADDON_RUNTIME_VERSION_MISMATCH` instead of advertising a
+  tool that later fails with `UNKNOWN_COMMAND`.
+
 ## [0.7.0-rc.1] - 2026-09-21
 
 ### Added

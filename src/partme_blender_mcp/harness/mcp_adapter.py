@@ -22,6 +22,7 @@ from .version import (
     BLENDER_DOWNLOAD_URL,
     HARNESS_PROTOCOL_VERSION,
 )
+from .runtime_contract import RuntimeContractError, validate_runtime_contract
 ENVELOPE_PROPERTIES = {
     "_requestId": {"type": "string", "minLength": 1, "description": "Stable request id for replay safety"},
     "_transactionId": {"type": "string", "minLength": 1, "description": "Harness milestone transaction id"},
@@ -191,6 +192,10 @@ class DescriptorBridge:
         required = {"protocolVersion", "sessionId", "transport", "address", "token", "pid"}
         if required.difference(descriptor) or descriptor.get("protocolVersion") != HARNESS_PROTOCOL_VERSION:
             raise McpAdapterError("INVALID_DESCRIPTOR", "Harness descriptor has an incompatible contract")
+        try:
+            validate_runtime_contract(descriptor)
+        except RuntimeContractError as error:
+            raise McpAdapterError(error.code, str(error)) from error
         if not self.process_alive(int(descriptor["pid"])):
             raise McpAdapterError("BLENDER_NOT_CONNECTED", "Harness process is no longer running")
         return descriptor
@@ -206,6 +211,9 @@ class DescriptorBridge:
             "transport": descriptor["transport"],
             "processId": descriptor["pid"],
             "sceneRevision": response.get("sceneRevision"),
+            "runtimeVersion": descriptor["runtimeVersion"],
+            "capabilityCount": len(descriptor["capabilities"]),
+            "capabilitiesSha256": descriptor["capabilitiesSha256"],
         }
         if isinstance(response.get("result"), dict):
             status.update({key: value for key, value in response["result"].items()
@@ -223,6 +231,12 @@ class DescriptorBridge:
              transaction_id: str | None = None, expected_scene_revision: int | None = None,
              authorization: str | None = None) -> dict:
         descriptor = self._load()
+        supported = {item["command"] for item in descriptor["capabilities"]}
+        if command not in supported:
+            raise McpAdapterError(
+                "ADDON_RUNTIME_CAPABILITY_MISMATCH",
+                f"Blender Add-on {descriptor['runtimeVersion']} does not declare command {command}; reinstall the matching Add-on",
+            )
         payload = {
             "protocolVersion": HARNESS_PROTOCOL_VERSION,
             "sessionId": descriptor["sessionId"],
@@ -250,14 +264,24 @@ def discover_bridge(runtime_dir: Path | None = None) -> DescriptorBridge:
                 os.environ.get("CODEX_BLENDER_RUNTIME_DIR") or
                 (Path(tempfile.gettempdir()) / "partme-blender"))
     live = []
+    contract_errors = []
     for path in sorted(root.glob("*.json")) if root.is_dir() else []:
         bridge = DescriptorBridge(descriptor_path=path)
         try:
             bridge.status()
             live.append(bridge)
-        except McpAdapterError:
+        except McpAdapterError as error:
+            if error.code in {"ADDON_RUNTIME_VERSION_MISMATCH", "ADDON_RUNTIME_CAPABILITY_MISMATCH"}:
+                contract_errors.append(error)
             continue
     if not live:
+        if len(contract_errors) == 1:
+            raise contract_errors[0]
+        if contract_errors:
+            raise McpAdapterError(
+                "ADDON_RUNTIME_VERSION_MISMATCH",
+                "Active Blender sessions use incompatible Add-on contracts; install the matching Add-on and restart Blender",
+            )
         raise McpAdapterError("BLENDER_NOT_CONNECTED", "No active PartMe Blender Harness session")
     if len(live) != 1:
         raise McpAdapterError("AMBIGUOUS_SESSION", "Multiple Blender sessions are active; set PARTME_BLENDER_DESCRIPTOR")

@@ -15,7 +15,7 @@
 
 - 本变更不直接复制 Dream Loop 仓库、不内置 Fal、不替换既有 ProviderAdapter。
 - 本变更不自动调用视觉模型；VisualVerdict 由人工或客户端 Judge 产生。
-- 本变更不发布 Add-on、不更新插件锁文件，也不宣称完成真实付费或 Windows 验收。
+- 本变更不宣称未实际执行的真实付费、客户端或 Windows 验收。
 
 ## Decisions
 
@@ -38,6 +38,14 @@ Harness 返回路径、哈希、字节数和尺寸；MCP 适配器仅对已知�
 ### 5. VisualVerdict 使用固定首版维度
 
 首版固定为 composition、lighting、materials、details 四项，运行时计算算术平均总分。问题与建议是有界文本数组。未来新增维度需要版本化 schema，避免历史分数口径漂移。
+
+### 6. 会话描述符是 Add-on/Runtime 契约握手
+
+Add-on 写入 `runtimeVersion`、`harnessProtocolVersion`、排序命令清单和内容哈希。Runtime 必须在连接状态检查和每次工具转发前验证。不做“遇到 UNKNOWN_COMMAND 再猜版本”的事后兼容，因为那会导致工具目录表面可用、实际不可用。
+
+### 7. 对象定位器使用命令级 Schema
+
+保留历史通用 `object` 字段的字符串定义，避免改变仍使用对象名的其他命令；仅对调用 `ObjectResolver` 的质量检查命令用 `COMMAND_FIELD_SCHEMAS` 覆盖成结构化定位器。
 
 ## Risks / Trade-offs
 

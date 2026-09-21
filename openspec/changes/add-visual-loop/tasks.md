@@ -23,3 +23,6 @@
 - [x] 4.2 新增 `blender-visual-loop` Skill，分别描述支持子智能体和单智能体客户端的编排策略。
 - [x] 4.3 完成 Fal 必要性评估：本变更不需要内置 Fal；若未来引入，必须以独立 ProviderAdapter 接入费用、提交不确定性、轮询和远端终止语义。
 - [ ] 4.4 验证 stdio/HTTP/SSE、Codex/Claude Code/ZCode/Kimi、macOS/Windows，并用真实目标图复现一次 0 到至少 8 分。
+- [x] 4.5 修正质量检查的对象定位器 Schema，并增加 MCP 边界契约测试。
+- [x] 4.6 在会话描述符中增加 Add-on/Runtime 版本与能力握手，对旧版、篡改和缺失命令返回可操作错误。
+- [x] 4.7 验证新版 Add-on 发布包与 Runtime 完全同版，并在真实 Blender 重跑 `scene.screenshot`、地面穿插和动作连续性。

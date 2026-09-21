@@ -6,7 +6,7 @@ loader rather than to the runtime. Keeping identity here means the version resol
 both the pip-installed runtime and the installed Add-on.
 """
 
-__version__ = "0.7.0-rc.1"
+__version__ = "0.7.0-rc.2"
 VERSION_TUPLE = tuple(int(part) for part in __version__.split("-", 1)[0].split("."))
 PRODUCT_NAME = "PartMe Blender MCP"
 MCP_SERVER_ID = "partme_blender"
