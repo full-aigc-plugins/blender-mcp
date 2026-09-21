@@ -100,6 +100,10 @@ Windows), honors `PARTME_BLENDER_MCP_PYTHON`, and recovers dead bootstrap lock
 owners. Its 508-test suite, distribution validator, remote CI, release tag, and
 marketplace update all passed.
 
+- Plugin release: [`v0.13.1`](https://github.com/full-aigc-plugins/blender-design-plugin/releases/tag/v0.13.1), commit `e38836eefd418178a8f280ead5f1497037d141c7`.
+- Plugin CI: run `35594750496` passed; Skills check run `35594750509` passed.
+- Marketplace commit: `4929bcc` pins Blender Design `0.13.1` at `v0.13.1`.
+
 After refreshing the Codex marketplace and cache, a real Codex CLI session used
 the installed `0.13.1+codex.20260921` plugin to call
 `blender_connection_status` against isolated Blender 5.2.1. The structured
@@ -110,5 +114,13 @@ than the client context budget permits. An explicit
 `PARTME_BLENDER_DESCRIPTOR` selected the isolated acceptance Blender because
 another user Blender session was also active.
 
-This is macOS Codex evidence only. Claude Code, ZCode, Kimi, Windows, and the
+Claude Code `2.1.273` then loaded the same installed launcher through a strict,
+single-server MCP configuration. With the only allowed tool restricted to
+`blender_connection_status`, the real client call also returned
+`status: connected`, `sceneRevision: 0`, and `transport: unix`. The first
+attempt under `dontAsk` was correctly denied by Claude's permission system; the
+acceptance rerun used non-interactive permission mode while still exposing only
+that one read-only tool.
+
+This is macOS Codex and Claude Code evidence only. ZCode, Kimi, Windows, and the
 real target-image score run remain open, so task 4.4 is not checked.
