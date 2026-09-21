@@ -1,5 +1,6 @@
 """TokenHub CLI 授权适配器契约。"""
 import importlib.util
+import os
 import subprocess
 import tempfile
 import unittest
@@ -52,7 +53,10 @@ class TokenHubAuthTests(unittest.TestCase):
                 "/bin/thcli", "--profile", "studio", "--site", "cn", "auth", "login",
             ])
             self.assertFalse(popen.call_args.kwargs["shell"])
-            self.assertEqual(Path(log_path).stat().st_mode & 0o777, 0o600)
+            if os.name == "posix":
+                self.assertEqual(Path(log_path).stat().st_mode & 0o777, 0o600)
+            else:
+                self.assertTrue(Path(log_path).is_file())
             self.assertEqual(popen.call_args.kwargs["stdin"], subprocess.DEVNULL)
 
 
