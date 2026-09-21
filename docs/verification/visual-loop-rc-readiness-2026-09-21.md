@@ -2,10 +2,10 @@
 
 ## Scope
 
-This record covers the development-tree implementation for OpenSpec change
+This record covers the implementation and RC publication for OpenSpec change
 `add-visual-loop`: reliable screenshots, target locking, structured verdicts,
-stall detection, explicit transaction advice, and cross-machine image content.
-It is not a release record and does not claim paid-provider, Windows, or real
+stall detection, explicit transaction advice, cross-machine image content, and
+the downstream orchestration Skill. It does not claim paid-provider or real
 target-image score acceptance.
 
 ## Automated evidence
@@ -57,11 +57,25 @@ The first real run exposed that the fixed MCP low-level `Server` no longer has
 `StreamableHTTPSessionManager` explicitly; the complete transport run above is
 the regression evidence for that correction.
 
+## RC and downstream evidence
+
+- Runtime commit: `f27d1832fab580df2c530cfb15c8f3bfad88a2f1`.
+- Immutable prerelease: [`v0.7.0-rc.1`](https://github.com/full-aigc-plugins/blender-mcp/releases/tag/v0.7.0-rc.1).
+- Runtime CI run `35585800217` passed on Ubuntu, macOS, and Windows; release run
+  `35586048128` completed successfully.
+- Freshly downloaded Release assets passed `SHA256SUMS.txt`; the Add-on digest
+  is `9ffc63ebf4db3771d5a2fd320063b4245a15a614fc296557ba9218ea96b10522`
+  and the Runtime digest is
+  `c85a8e2a8a288350bf8a71b3139ec96497d8b77f4260a62e87fdecb9aa836d01`.
+- Blender Design [`v0.13.0`](https://github.com/full-aigc-plugins/blender-design-plugin/releases/tag/v0.13.0)
+  pins those exact artifacts and ships `blender-visual-loop` with both
+  subagent-judge and single-agent orchestration strategies.
+- Downstream PR `#4` passed distribution, vendored-skill, and Blender 4.2.23,
+  4.5.13, and 5.2.1 certification on macOS and Windows before merge.
+- The public plugin catalog pins Blender Design `0.13.0` at `v0.13.0`.
+
 ## Remaining release gates
 
-- Choose and publish a new immutable RC version; do not overwrite `0.6.1`.
-- Verify remote CI and release assets, then update the downstream plugin lock.
-- Add the `blender-visual-loop` Skill only after the plugin consumes that RC.
 - Keep Fal optional behind a separate ProviderAdapter and a user-approved cost
   ceiling.
 - Run Codex, Claude Code, ZCode and Kimi acceptance on macOS and Windows.

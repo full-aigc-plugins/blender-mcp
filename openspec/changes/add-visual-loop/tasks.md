@@ -19,7 +19,7 @@
 
 ## 4. 插件与真实验收
 
-- [ ] 4.1 发布新的不可变 `blender-mcp` RC，验证资产和远端 CI 后更新插件 `runtime.lock.json`。
-- [ ] 4.2 新增 `blender-visual-loop` Skill，分别描述支持子智能体和单智能体客户端的编排策略。
+- [x] 4.1 发布新的不可变 `blender-mcp` RC，验证资产和远端 CI 后更新插件 `runtime.lock.json`。
+- [x] 4.2 新增 `blender-visual-loop` Skill，分别描述支持子智能体和单智能体客户端的编排策略。
 - [ ] 4.3 若确需 Fal，以独立 ProviderAdapter 接入费用、提交不确定性、轮询和远端终止语义。
 - [ ] 4.4 验证 stdio/HTTP/SSE、Codex/Claude Code/ZCode/Kimi、macOS/Windows，并用真实目标图复现一次 0 到至少 8 分。
