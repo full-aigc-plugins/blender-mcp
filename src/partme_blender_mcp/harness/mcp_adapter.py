@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import shutil
@@ -13,6 +15,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from .runtime import build_registry
+from .errors import HarnessError
+from .image_artifact import MAX_IMAGE_BYTES, inspect_image_bytes
 from .transport import Endpoint, send_request
 from .version import (
     BLENDER_DOWNLOAD_URL,
@@ -208,6 +212,13 @@ class DescriptorBridge:
                            if key not in {"token", "authorization"}})
         return status
 
+    def authorized_output_root(self) -> Path:
+        descriptor = self._load()
+        value = descriptor.get("outputRoot")
+        if not isinstance(value, str) or not Path(value).is_absolute():
+            raise McpAdapterError("INVALID_DESCRIPTOR", "Harness descriptor has no authorized output root")
+        return Path(value).resolve()
+
     def call(self, command: str, arguments: dict, *, request_id: str | None = None,
              transaction_id: str | None = None, expected_scene_revision: int | None = None,
              authorization: str | None = None) -> dict:
@@ -320,12 +331,51 @@ class McpAdapter:
         }
 
     @staticmethod
-    def _result(payload: dict, *, is_error: bool = False) -> dict:
+    def _result(payload: dict, *, is_error: bool = False, images: list[dict] | None = None) -> dict:
+        content = [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, separators=(",", ":"))}]
+        content.extend(images or [])
         return {
-            "content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, separators=(",", ":"))}],
+            "content": content,
             "structuredContent": payload,
             "isError": is_error,
         }
+
+    @staticmethod
+    def _visual_content(command: str, response: dict, bridge) -> list[dict]:
+        if command == "scene.screenshot":
+            receipts = [response.get("result", {}).get("artifact")]
+        elif command == "preview.capture":
+            receipts = response.get("result", {}).get("milestone", {}).get("views", [])
+        else:
+            return []
+        if not receipts or any(not isinstance(receipt, dict) for receipt in receipts):
+            raise McpAdapterError("IMAGE_ARTIFACT_CHANGED", "visual result has no valid image receipt")
+        root = Path(bridge.authorized_output_root()).resolve()
+        images = []
+        total = 0
+        for receipt in receipts:
+            path = Path(receipt.get("path", ""))
+            try:
+                resolved = path.resolve(strict=True)
+            except (OSError, RuntimeError) as error:
+                raise McpAdapterError("IMAGE_ARTIFACT_CHANGED", "visual artifact is unavailable") from error
+            if path.is_symlink() or not resolved.is_file() or not resolved.is_relative_to(root):
+                raise McpAdapterError("IMAGE_ARTIFACT_CHANGED", "visual artifact is outside the authorized output root")
+            size = resolved.stat().st_size
+            if size <= 0 or size > MAX_IMAGE_BYTES:
+                raise McpAdapterError("IMAGE_ARTIFACT_CHANGED", "visual response exceeds the 20 MiB limit")
+            data = resolved.read_bytes()
+            total += len(data)
+            if len(data) != size or total > MAX_IMAGE_BYTES:
+                raise McpAdapterError("IMAGE_ARTIFACT_CHANGED", "visual artifact changed while it was read")
+            if hashlib.sha256(data).hexdigest() != receipt.get("sha256"):
+                raise McpAdapterError("IMAGE_ARTIFACT_CHANGED", "visual artifact no longer matches its SHA-256")
+            try:
+                media_type, _, _ = inspect_image_bytes(data)
+            except HarnessError as error:
+                raise McpAdapterError("IMAGE_ARTIFACT_CHANGED", "visual artifact is not a supported image") from error
+            images.append({"type": "image", "data": base64.b64encode(data).decode("ascii"), "mimeType": media_type})
+        return images
 
     def _error(self, error: McpAdapterError) -> dict:
         payload = {"status": "failed", "error": {"code": error.code, "message": str(error)}}
@@ -379,7 +429,13 @@ class McpAdapter:
         except McpAdapterError as error:
             return self._error(error)
         failed = response.get("status") == "failed" or "error" in response
-        return self._result(response, is_error=failed)
+        if failed:
+            return self._result(response, is_error=True)
+        try:
+            images = self._visual_content(command, response, bridge)
+        except McpAdapterError as error:
+            return self._error(error)
+        return self._result(response, images=images)
 
 
 def serve_stdio(input_stream=None, output_stream=None, adapter: McpAdapter | None = None) -> int:

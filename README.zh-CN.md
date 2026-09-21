@@ -70,7 +70,7 @@ PartMe Blender MCP 把 MCP 官方 SDK 的 `stdio`、Streamable HTTP 和兼容性
 |:---|:---|
 | 产品 | PartMe Blender MCP |
 | MCP Server ID | `partme_blender` |
-| 当前版本 | `0.6.1` 正式版 |
+| 当前版本 | `0.7.0-rc.1` 候选版 |
 | MCP 协议 | `2025-06-18` |
 | Harness 兼容协议 | `codex-blender/v1` |
 | Blender | 4.2–5.2，按真实验证矩阵声明 |
@@ -109,11 +109,11 @@ PartMe Blender MCP 把 MCP 官方 SDK 的 `stdio`、Streamable HTTP 和兼容性
 
 ### 2. 下载 Release
 
-从 [v0.6.1](https://github.com/full-aigc-plugins/blender-mcp/releases/tag/v0.6.1)下载：
+从 [v0.7.0-rc.1](https://github.com/full-aigc-plugins/blender-mcp/releases/tag/v0.7.0-rc.1) 下载：
 
 ```text
-partme-blender-mcp-addon-0.6.1.zip
-partme-blender-mcp-runtime-0.6.1.zip
+partme-blender-mcp-addon-0.7.0-rc.1.zip
+partme-blender-mcp-runtime-0.7.0-rc.1.zip
 SHA256SUMS.txt
 ```
 
@@ -129,7 +129,7 @@ SHA256SUMS.txt
 也可以直接用 pip 安装 Runtime 或平台包：
 
 ```bash
-python -m pip install ./partme-blender-mcp-runtime-0.6.1.zip
+python -m pip install ./partme-blender-mcp-runtime-0.7.0-rc.1.zip
 python -m partme_blender_mcp --help
 ```
 
@@ -137,7 +137,7 @@ python -m partme_blender_mcp --help
 
 1. Blender → **Edit → Preferences → Add-ons**。
 2. 右上角菜单 → **从磁盘安装…**。
-3. 选择 `partme-blender-mcp-addon-0.6.1.zip`，不要解压。
+3. 选择 `partme-blender-mcp-addon-0.7.0-rc.1.zip`，不要解压。
 4. 启用 **PartMe Blender MCP**。
 5. 回到 3D View，按 `N`，打开 **PartMe MCP**。
 6. 选择授权目录，点击 **Start MCP Server**。
@@ -240,7 +240,7 @@ blender-mcp/
 
 ## 兼容与迁移
 
-`0.6.1` 是当前正式版本。Harness 暂时保留 `codex-blender/v1`，使现有 `codex-blender-plugin` 能进行差分迁移；新公共身份、MCP Server ID 和 Add-on 均使用 PartMe。未经验证的客户端保持 `DOCUMENTED_NOT_RUN`。
+`0.7.0-rc.1` 是当前候选版本。Harness 暂时保留 `codex-blender/v1`，使现有 `codex-blender-plugin` 能进行差分迁移；新公共身份、MCP Server ID 和 Add-on 均使用 PartMe。未经验证的客户端保持 `DOCUMENTED_NOT_RUN`。
 
 ## 深入文档
 

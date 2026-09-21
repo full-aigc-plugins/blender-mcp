@@ -25,6 +25,7 @@ from .version import MCP_SERVER_NAME, PRODUCT_NAME, __version__
 
 _CONTENT_ADAPTER = TypeAdapter(types.ContentBlock)
 _LOOPBACK_NAMES = {"localhost", "127.0.0.1", "::1"}
+MAX_REMOTE_REQUEST_BYTES = 32 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,16 +257,73 @@ def build_remote_app(adapter, config: RemoteServerConfig):
     auth, verifier = _auth(config)
     security = _security(config)
     if config.transport == "streamable-http":
-        app = server.streamable_http_app(
-            streamable_http_path=config.streamable_http_path,
-            host=config.host,
-            transport_security=security,
-            auth=auth,
-            token_verifier=verifier,
+        return ListenerStatusMiddleware(
+            _build_streamable_http_app(server, config, auth, verifier, security), config,
         )
-        return ListenerStatusMiddleware(app, config)
 
     return ListenerStatusMiddleware(_build_sse_app(server, config, auth, verifier, security), config)
+
+
+def _build_streamable_http_app(server, config, auth, verifier, security):
+    """Compose Streamable HTTP from official low-level SDK public APIs."""
+    from contextlib import asynccontextmanager
+
+    from mcp.server.auth.middleware.auth_context import AuthContextMiddleware
+    from mcp.server.auth.middleware.bearer_auth import BearerAuthBackend, RequireAuthMiddleware
+    from mcp.server.auth.routes import build_resource_metadata_url, create_protected_resource_routes
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+    from starlette.applications import Starlette
+    from starlette.middleware import Middleware
+    from starlette.middleware.authentication import AuthenticationMiddleware
+    from starlette.routing import Route
+
+    manager_options = {
+        "app": server,
+        "json_response": False,
+        "stateless": False,
+        "security_settings": security,
+    }
+    # SDK 2.2 exposes a transport-level request limit; the older public
+    # constructor does not. Keep the official constructor usable across both
+    # shapes while enforcing the limit whenever the SDK provides it.
+    if "max_request_body_size" in inspect.signature(StreamableHTTPSessionManager).parameters:
+        manager_options["max_request_body_size"] = MAX_REMOTE_REQUEST_BYTES
+    manager = StreamableHTTPSessionManager(**manager_options)
+
+    class StreamableHttpApp:
+        async def __call__(self, scope, receive, send):
+            await manager.handle_request(scope, receive, send)
+
+    endpoint = StreamableHttpApp()
+    routes = []
+    middleware = []
+    if verifier:
+        middleware = [
+            Middleware(
+                AuthenticationMiddleware,
+                backend=BearerAuthBackend(
+                    verifier,
+                    resource_server_url=auth.resource_server_url if auth.validate_token_resource else None,
+                ),
+            ),
+            Middleware(AuthContextMiddleware),
+        ]
+        metadata_url = build_resource_metadata_url(auth.resource_server_url)
+        endpoint = RequireAuthMiddleware(endpoint, auth.required_scopes or [], metadata_url)
+    routes.append(Route(config.streamable_http_path, endpoint=endpoint))
+    if auth:
+        routes.extend(create_protected_resource_routes(
+            resource_url=auth.resource_server_url,
+            authorization_servers=[auth.issuer_url],
+            scopes_supported=auth.required_scopes,
+        ))
+
+    @asynccontextmanager
+    async def lifespan(_app):
+        async with manager.run():
+            yield
+
+    return Starlette(routes=routes, middleware=middleware, lifespan=lifespan)
 
 
 def _build_sse_app(server, config, auth, verifier, security):

@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.6.1"
+VERSION = "0.7.0-rc.1"
 
 
 class RepositoryStructureTests(unittest.TestCase):
@@ -93,12 +93,32 @@ class RuntimeContractTests(unittest.TestCase):
         finally:
             sys.path.pop(0)
         commands = [tool for tool in tools if tool.get("_meta", {}).get("codexBlenderCommand")]
-        self.assertEqual(len(commands), 173)
+        self.assertEqual(len(commands), 179)
         self.assertIn("blender_provider_query_result", {tool["name"] for tool in commands})
         self.assertIn("blender_asset_operation_result", {tool["name"] for tool in commands})
         self.assertFalse(any("official_uploader" in tool["name"] for tool in commands))
         self.assertNotIn("blender_advanced_execute_python", {tool["name"] for tool in commands})
         self.assertNotIn("blender_authorize", {tool["name"] for tool in tools})
+
+    def test_visual_tools_are_unique_across_every_catalog_page(self):
+        sys.path.insert(0, str(ROOT / "src"))
+        try:
+            from partme_blender_mcp.harness.mcp_adapter import McpAdapter
+            adapter = McpAdapter(plugin_root=ROOT)
+            names = []
+            cursor = None
+            while True:
+                page = adapter.list_tools(cursor=cursor)
+                names.extend(tool["name"] for tool in page["tools"])
+                cursor = page.get("nextCursor")
+                if cursor is None:
+                    break
+        finally:
+            sys.path.pop(0)
+        self.assertEqual(len(names), 184)
+        self.assertEqual(len(names), len(set(names)))
+        self.assertIn("blender_scene_screenshot", names)
+        self.assertIn("blender_visual_loop_record_verdict", names)
 
     def test_cli_version_help_and_doctor_are_non_blocking(self):
         env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
@@ -155,11 +175,15 @@ class ReleasePackageTests(unittest.TestCase):
             manifest = json.loads((output / "runtime-manifest.json").read_text())
             self.assertEqual(manifest["version"], VERSION)
             self.assertEqual(manifest["product"], "PartMe Blender MCP")
+            self.assertEqual(manifest["status"], "prerelease")
             with zipfile.ZipFile(output / f"partme-blender-mcp-addon-{VERSION}.zip") as archive:
                 archive_names = set(archive.namelist())
                 self.assertIn("partme_blender_mcp/__init__.py", archive_names)
                 self.assertIn("partme_blender_mcp/panel.py", archive_names)
                 self.assertIn("partme_blender_mcp/harness/server.py", archive_names)
+                self.assertIn("partme_blender_mcp/harness/scene_screenshot.py", archive_names)
+                self.assertIn("partme_blender_mcp/harness/visual_loop.py", archive_names)
+                self.assertIn("partme_blender_mcp/harness/image_artifact.py", archive_names)
                 self.assertIn(
                     "partme_blender_mcp/_vendor/tencentcloud/ai3d/v20250513/ai3d_client.py",
                     archive_names,

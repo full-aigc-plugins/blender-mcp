@@ -46,6 +46,11 @@ READ_ONLY_COMMANDS = {
 READ_ONLY_COMMANDS.add("provider.external_action")
 READ_ONLY_COMMANDS.add("provider.task_control")
 READ_ONLY_COMMANDS.update({'job.submit','job.status','job.cancel','job.recover'})
+READ_ONLY_COMMANDS.update({
+    "scene.screenshot",
+    "visual_loop.create", "visual_loop.status", "visual_loop.record_capture",
+    "visual_loop.record_verdict", "visual_loop.cancel",
+})
 INSPECTION_COMMANDS = {
     "capability.list", "capability.describe",
     "animation.action_list", "validation.foot_drift", "validation.limb_length",
@@ -56,6 +61,7 @@ INSPECTION_COMMANDS = {
     "job.status", "job.cancel", "job.recover",
     "session.status", "session.capabilities", "session.pause", "session.set_progress",
     "scene.inspect", "preview.capture", "view.present", "view.set", "view.focus", "playback.set_frame", "playback.set",
+    "scene.screenshot", "visual_loop.status",
     "official_uploader.inspect", "official_uploader.status",
     "provider.task_control",
     "provider.status", "provider.query", "provider.query_result",

@@ -62,11 +62,12 @@ async def catalog_probe(session):
         page = await session.list_tools(params=PaginatedRequestParams(cursor=cursor))
         pages += 1
         for tool in page.tools:
-            assert tool.name not in schemas, ('duplicate tool', tool.name)
-            assert tool.input_schema.get('type') == 'object', tool.name
-            names.append(tool.name)
-            schemas[tool.name] = tool.input_schema
-        cursor = page.next_cursor
+            payload = tool.model_dump(by_alias=True)
+            assert payload['name'] not in schemas, ('duplicate tool', payload['name'])
+            assert payload['inputSchema'].get('type') == 'object', payload['name']
+            names.append(payload['name'])
+            schemas[payload['name']] = payload['inputSchema']
+        cursor = page.model_dump(by_alias=True).get('nextCursor')
         if cursor is None:
             break
         assert cursor not in seen and pages < 100, 'pagination loop'
@@ -90,29 +91,47 @@ def client_process(transport, address, report_path, token, *, hold_seconds=2, ca
               "httpx_client_factory=client_factory")
     )
     source = f"""
-import anyio, json, ssl
+import anyio, base64, json, ssl
 from pathlib import Path
 from mcp import ClientSession
 {client_import}
-import httpx2
+try:
+    import httpx2 as client_httpx
+except ImportError:
+    import httpx as client_httpx
 {CATALOG_PROBE}
 ssl_context = ssl.create_default_context(cafile={ca_file!r}) if {bool(ca_file)!r} else True
 def client_factory(headers=None, timeout=None, auth=None):
-    return httpx2.AsyncClient(headers=headers, timeout=timeout, auth=auth, verify=ssl_context)
+    return client_httpx.AsyncClient(headers=headers, timeout=timeout, auth=auth, verify=ssl_context)
 async def main():
-    http_client = (httpx2.AsyncClient(headers={{'Authorization': 'Bearer ' + {token!r}}},
-                                      verify=ssl_context)
+    http_client = (client_httpx.AsyncClient(headers={{'Authorization': 'Bearer ' + {token!r}}},
+                                            verify=ssl_context)
                    if {transport == 'streamable-http'!r} else None)
     async with connect({connect_args}) as streams:
         async with ClientSession(streams[0], streams[1]) as session:
             initialized = await session.initialize()
             result = await session.call_tool('blender_connection_status', {{}})
+            catalog = await catalog_probe(session)
+            visual = await session.call_tool('blender_scene_screenshot', {{
+                'path': 'remote/{report_path.stem}.png', 'width': 32, 'height': 24,
+                '_transactionId': 'remote-{report_path.stem}',
+            }})
+            initialized_payload = initialized.model_dump(by_alias=True)
+            result_payload = result.model_dump(by_alias=True)
+            visual_payload = visual.model_dump(by_alias=True)
+            images = [block for block in visual_payload['content'] if block.get('type') == 'image']
             Path({str(report_path)!r}).write_text(json.dumps({{
-                'server': initialized.server_info.name,
-                'isError': result.is_error,
-                'connected': result.structured_content.get('connected'),
-                'response': result.structured_content,
-                'catalog': await catalog_probe(session),
+                'server': initialized_payload['serverInfo']['name'],
+                'isError': result_payload['isError'],
+                'connected': result_payload['structuredContent'].get('connected'),
+                'response': result_payload['structuredContent'],
+                'catalog': catalog,
+                'visual': {{
+                    'isError': visual_payload['isError'],
+                    'imageCount': len(images),
+                    'mimeType': images[0]['mimeType'] if images else None,
+                    'bytes': len(base64.b64decode(images[0]['data'])) if images else 0,
+                }},
             }}))
             await anyio.sleep({hold_seconds!r})
 anyio.run(main)
@@ -123,7 +142,7 @@ anyio.run(main)
 def stdio_client_process(report_path, descriptor_path):
     """通过官方客户端验证公开 stdio，不将就绪探测当成协议验收。"""
     source = f"""
-import anyio, json, os
+import anyio, base64, json, os
 from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -139,12 +158,27 @@ async def main():
         async with ClientSession(*streams) as session:
             initialized = await session.initialize()
             result = await session.call_tool('blender_connection_status', {{}})
+            catalog = await catalog_probe(session)
+            visual = await session.call_tool('blender_scene_screenshot', {{
+                'path': 'remote/{report_path.stem}.png', 'width': 32, 'height': 24,
+                '_transactionId': 'remote-{report_path.stem}',
+            }})
+            initialized_payload = initialized.model_dump(by_alias=True)
+            result_payload = result.model_dump(by_alias=True)
+            visual_payload = visual.model_dump(by_alias=True)
+            images = [block for block in visual_payload['content'] if block.get('type') == 'image']
             Path({str(report_path)!r}).write_text(json.dumps({{
-                'server': initialized.server_info.name,
-                'isError': result.is_error,
-                'connected': result.structured_content.get('connected'),
-                'response': result.structured_content,
-                'catalog': await catalog_probe(session),
+                'server': initialized_payload['serverInfo']['name'],
+                'isError': result_payload['isError'],
+                'connected': result_payload['structuredContent'].get('connected'),
+                'response': result_payload['structuredContent'],
+                'catalog': catalog,
+                'visual': {{
+                    'isError': visual_payload['isError'],
+                    'imageCount': len(images),
+                    'mimeType': images[0]['mimeType'] if images else None,
+                    'bytes': len(base64.b64decode(images[0]['data'])) if images else 0,
+                }},
             }}))
 anyio.run(main)
 """
@@ -329,6 +363,10 @@ for key, expected in required.items():
 for key in ("stdioClient", "httpClient", "httpClient2", "httpReconnectClient", "sseClient"):
     if {name: report[key][name] for name in ('server', 'isError', 'connected')} != {"server": "partme-blender-mcp", "isError": False, "connected": True}:
         raise RuntimeError(f"remote transport smoke failed: {key}={report[key]!r}")
+    if report[key]["visual"]["isError"] or report[key]["visual"]["imageCount"] != 1:
+        raise RuntimeError(f"remote visual content failed: {key}={report[key]['visual']!r}")
+    if report[key]["visual"]["mimeType"] != "image/png" or report[key]["visual"]["bytes"] <= 0:
+        raise RuntimeError(f"remote visual payload invalid: {key}={report[key]['visual']!r}")
 assert report['stdioClient']['catalog'] == report['httpClient']['catalog'] == report['sseClient']['catalog']
 assert report['httpClient2']['catalog'] == report['stdioClient']['catalog']
 assert report['httpReconnectClient']['catalog'] == report['stdioClient']['catalog']

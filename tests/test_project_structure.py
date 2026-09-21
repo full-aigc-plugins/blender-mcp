@@ -139,7 +139,7 @@ class LayoutTests(unittest.TestCase):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         self.assertIn('dynamic = ["version"]', pyproject)
         self.assertIn('version = {attr = "partme_blender_mcp.harness.version.__version__"}', pyproject)
-        self.assertEqual(__version__, ".".join(str(part) for part in VERSION_TUPLE))
+        self.assertEqual(__version__.split("-", 1)[0], ".".join(str(part) for part in VERSION_TUPLE))
         addon_init = (ADDON / "__init__.py").read_text(encoding="utf-8")
         import ast
         from partme_blender_mcp.harness.version import VERSION_TUPLE

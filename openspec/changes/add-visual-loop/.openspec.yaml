@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-09-21
+goal: 为跨客户端 Blender 自动视觉迭代提供稳定的运行时契约

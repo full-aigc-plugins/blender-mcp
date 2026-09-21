@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.0-rc.1] - 2026-09-21
+
+### Added
+
+- Reliable `scene.screenshot` receipts with immutable PNG artifacts, state restoration,
+  SHA-256 verification and MCP image content for local and remote clients.
+- Persistent visual-loop commands for target locking, captures, structured verdicts,
+  score history, best-round tracking, stall detection and explicit transaction advice.
+- Streamable HTTP and SSE image-return acceptance coverage using the official MCP SDK.
+
+### Fixed
+
+- Streamable HTTP now composes the MCP SDK session manager explicitly, preserving
+  reconnect and independent HTTP/SSE shutdown behavior with MCP SDK 2.2.
+
 ## [0.6.1] - 2026-09-21
 
 ### Fixed
@@ -218,7 +233,8 @@ All notable changes to this project are documented here. The format follows
 - Cross-client guides (Codex, Claude Desktop, Claude Code, MiniMax Design, Cursor, generic
   MCP, macOS, Windows) with a documentation contract test.
 
-[Unreleased]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.7.0-rc.1...HEAD
+[0.7.0-rc.1]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.6.1...v0.7.0-rc.1
 [0.6.1]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.5.2...v0.5.3

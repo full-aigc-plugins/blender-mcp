@@ -4,7 +4,7 @@
 > 适用：Blender 4.2–5.2、macOS / Windows / Linux  
 > 核验日期：2026-09-15
 
-> **发布提醒**：`v0.5.3` 是正式版本。升级前必须从 [GitHub Release](https://github.com/full-aigc-plugins/blender-mcp/releases/latest) 下载新版并校验 SHA-256。
+> **发布提醒**：`v0.7.0-rc.1` 是候选版本。升级前必须从 [GitHub Release](https://github.com/full-aigc-plugins/blender-mcp/releases/tag/v0.7.0-rc.1) 下载并校验 SHA-256。
 
 ## 1. 升级前检查清单
 
@@ -96,7 +96,7 @@ Release 中包含 `runtime-manifest.json`，用于确认版本兼容性：
 
 | 字段 | 含义 | 示例 |
 |:---|:---|:---|
-| `version` | Runtime 版本号 | `"0.5.3"` |
+| `version` | Runtime 版本号 | `"0.7.0-rc.1"` |
 | `commit` | 构建所用的 Git 提交 | `"a1b2c3d..."` |
 | `python` | 支持的 Python 版本范围 | `"3.11-3.13"` |
 | `blender` | 支持的 Blender 版本范围 | `"4.2-5.2"` |

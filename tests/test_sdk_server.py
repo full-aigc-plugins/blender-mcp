@@ -48,7 +48,10 @@ class OfficialSdkServerTests(unittest.IsolatedAsyncioTestCase):
             def call_tool(self, name, arguments):
                 self.calls.append(("call", name, arguments))
                 return {
-                    "content": [{"type": "text", "text": '{"ok":true}'}],
+                    "content": [
+                        {"type": "text", "text": '{"ok":true}'},
+                        {"type": "image", "data": "iVBORw0KGgo=", "mimeType": "image/png"},
+                    ],
                     "structuredContent": {"ok": True},
                     "isError": False,
                 }
@@ -81,6 +84,8 @@ class OfficialSdkServerTests(unittest.IsolatedAsyncioTestCase):
         result_payload = result.model_dump(by_alias=True)
         self.assertEqual(result_payload["structuredContent"], {"ok": True})
         self.assertFalse(result_payload["isError"])
+        self.assertEqual(result_payload["content"][1]["type"], "image")
+        self.assertEqual(result_payload["content"][1]["mimeType"], "image/png")
         self.assertEqual(adapter.calls[-1], ("call", "blender_probe", {}))
 
     def test_non_loopback_requires_authentication_and_https_public_url(self):
@@ -108,6 +113,27 @@ class OfficialSdkServerTests(unittest.IsolatedAsyncioTestCase):
         ))
         self.assertEqual(config.sse_path, "/events")
         self.assertEqual(config.message_path, "/messages/")
+
+    def test_streamable_http_app_uses_the_low_level_official_sdk(self):
+        from partme_blender_mcp.harness.sdk_server import (
+            RemoteServerConfig,
+            build_remote_app,
+        )
+
+        class Adapter:
+            def list_tools(self, *, cursor=None, limit=50):
+                return {"tools": []}
+
+            def call_tool(self, _name, _arguments):
+                raise AssertionError("not called while constructing the app")
+
+            def record_client(self, _client):
+                pass
+
+        app = build_remote_app(Adapter(), RemoteServerConfig(
+            transport="streamable-http", host="127.0.0.1", port=9877,
+        ))
+        self.assertEqual(app.config.streamable_http_path, "/mcp")
 
     async def test_streamable_http_client_count_tracks_live_get_stream(self):
         from partme_blender_mcp.harness.sdk_server import ListenerStatusMiddleware, RemoteServerConfig

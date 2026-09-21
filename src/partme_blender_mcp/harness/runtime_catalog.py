@@ -20,7 +20,7 @@ FIELDS = {
         'camera', 'dataPath', 'text', 'script', 'milestone', 'prompt', 'id', 'domain', 'maturity', 'view',
         'baseName', 'groupName', 'strip', 'colorDepth', 'uvLayer', 'url', 'filename',
         'providerId', 'taskId', 'risk',
-        'query', 'licence', 'modelId')},
+        'query', 'licence', 'modelId', 'loopId', 'transactionId')},
     **{key: VECTOR for key in ('location', 'rotation', 'scale', 'color')},
     'baseColor': {'type': 'array', 'minItems': 4, 'maxItems': 4,
                   'items': {'type': 'number', 'minimum': 0, 'maximum': 1}},
@@ -180,6 +180,32 @@ COMMAND_FIELD_SCHEMAS = {
     'camera.follow_path': {
         'path': {'type': 'object', 'description': 'Curve object locator'},
     },
+    'scene.screenshot': {
+        'path': {'type': 'string', 'minLength': 5,
+                 'pattern': r'^(?!/)(?!.*(?:^|/)\.\.(?:/|$)).+\.(?:png|jpe?g)$'},
+        'width': {'type': 'integer', 'minimum': 1, 'maximum': 8192},
+        'height': {'type': 'integer', 'minimum': 1, 'maximum': 8192},
+    },
+    'visual_loop.create': {
+        'loopId': {'type': 'string', 'pattern': r'^[A-Za-z0-9_-]{1,80}$'},
+        'targetPath': {'type': 'string', 'minLength': 1},
+        'targetData': {'type': 'string', 'minLength': 1, 'description': 'Bounded Base64 PNG or JPEG'},
+        'minimumScore': {'type': 'number', 'minimum': 0, 'maximum': 10},
+        'maxRounds': {'type': 'integer', 'minimum': 1, 'maximum': 100},
+        'stallWindow': {'type': 'integer', 'minimum': 1, 'maximum': 20},
+        'minimumImprovement': {'type': 'number', 'minimum': 0, 'maximum': 10},
+    },
+    'visual_loop.record_capture': {
+        'artifact': {'type': 'object', 'required': ['path', 'sha256']},
+        'transactionId': {'type': 'string', 'minLength': 1},
+    },
+    'visual_loop.record_verdict': {
+        'round': {'type': 'integer', 'minimum': 1},
+        'scores': {'type': 'object', 'required': ['composition', 'lighting', 'materials', 'details']},
+        'issues': {'type': 'array', 'maxItems': 20, 'items': {'type': 'string', 'maxLength': 500}},
+        'nextActions': {'type': 'array', 'maxItems': 20, 'items': {'type': 'string', 'maxLength': 500}},
+        'judge': {'type': 'object', 'required': ['type']},
+    },
 }
 
 TESTS = {
@@ -206,6 +232,7 @@ TESTS = {
     'playback': 'test_foreground_controls.py', 'session': 'test_harness_session.py',
     'capability': 'test_capability_catalog.py',
     'production': 'test_production_profile.py',
+    'visual_loop': 'test_visual_loop.py',
 }
 P1_VERIFIED = {
     'scene.set_units', 'collection.create', 'collection.move_object', 'collection.set_visibility',
@@ -268,7 +295,7 @@ LIFECYCLE_FOREGROUND_VERIFIED = frozenset({
 
 UI_COMMANDS = {'view.set', 'view.focus', 'view.present', 'playback.set', 'sculpt.brush_stroke'}
 LONG_COMMANDS = {'preview.capture', 'export.file', 'official_uploader.render_and_link'}
-NON_SCENE = {'capability', 'session', 'view', 'playback', 'preview', 'export', 'official_uploader'}
+NON_SCENE = {'capability', 'session', 'view', 'playback', 'preview', 'export', 'official_uploader', 'visual_loop'}
 NON_SCENE.add('job')
 
 DOMAIN_SKILLS = {
@@ -298,6 +325,7 @@ DOMAIN_SKILLS = {
     'validation': ['codex-blender-quality-validation'],
     'job': ['codex-blender-background-jobs'],
     'preview': ['codex-blender-preview'],
+    'visual_loop': [],
     'export': ['codex-blender-export'],
     'official_uploader': ['codex-blender-jimeng-web'],
     'advanced': ['codex-blender-use'],
@@ -453,7 +481,7 @@ class RuntimeCommandRegistry(CommandRegistry):
         requirements = ['Per-request argument checks and session policy still apply']
         if name in UI_COMMANDS:
             requirements.append('Foreground window with a VIEW_3D area')
-        if name in {'preview.capture', 'export.file'}:
+        if name in {'preview.capture', 'scene.screenshot', 'export.file'} or domain == 'visual_loop':
             requirements.append('Approved output root; export additionally requires a committed snapshot')
         if name == 'material.attach_image_texture':
             requirements.append('Approved asset root and an existing image file')
@@ -564,7 +592,7 @@ class RuntimeCommandRegistry(CommandRegistry):
     def _probe(self, name):
         if name.startswith('job.') and self.output_root is None:
             return {'status':'unavailable','reason':'No approved output root'}
-        if name in {'preview.capture', 'export.file'} and self.output_root is None:
+        if (name in {'preview.capture', 'scene.screenshot', 'export.file'} or name.startswith('visual_loop.')) and self.output_root is None:
             return {'status': 'unavailable', 'reason': 'No approved output root'}
         if name == 'material.attach_image_texture' and not self.asset_roots:
             return {'status': 'unavailable', 'reason': 'No approved asset roots'}

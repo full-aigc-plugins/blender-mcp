@@ -180,7 +180,7 @@ def build(output: Path) -> list[Path]:
         "harnessProtocol": "codex-blender/v1",
         "python": "3.11-3.13",
         "blender": "4.2-5.2",
-        "status": "release",
+        "status": "prerelease" if "-" in release_version else "release",
         "artifacts": [addon_name, runtime_name, mac_name, windows_name],
     }
     manifest_path = output / "runtime-manifest.json"

@@ -39,6 +39,8 @@ import re
 from .advanced_python import AdvancedPythonExecutor
 from .exporter import Exporter
 from .preview import PreviewEngine
+from .scene_screenshot import SceneScreenshot
+from .visual_loop import VisualLoopStore
 from .path_policy import PathPolicy
 from .errors import HarnessError
 from .production_profile import ProductionProfile, RuntimeIdentity
@@ -101,6 +103,10 @@ def build_registry(bpy_module, *, runtime_mode: str = "managed", approved_output
     advanced = AdvancedPythonExecutor(bpy_module)
     exporter = Exporter(bpy_module, approved_output_root=approved_output_root) if approved_output_root else None
     preview = PreviewEngine(bpy_module)
+    screenshot = SceneScreenshot(bpy_module, approved_output_root) if approved_output_root else None
+    visual_loops = VisualLoopStore(
+        approved_output_root, input_roots=approved_asset_roots,
+    ) if approved_output_root else None
 
     def provider_task_control(arguments):
         try:
@@ -491,6 +497,65 @@ def build_registry(bpy_module, *, runtime_mode: str = "managed", approved_output
         capture_preview,
         validate=closed_arguments(required=("snapshotId",), optional=("milestone", "width", "height")),
         risk="read",
+    )
+    def require_visual_runtime():
+        if screenshot is None or visual_loops is None:
+            raise HarnessError("OUTPUT_NOT_AUTHORIZED", "visual output root is unavailable")
+
+    def capture_screenshot(arguments):
+        require_visual_runtime()
+        artifact = screenshot.capture(arguments, scene_revision=revision_provider())
+        return {"changedObjects": [], "result": {"artifact": artifact}}
+
+    registry.register(
+        "scene.screenshot",
+        capture_screenshot,
+        validate=closed_arguments(required=("path",), optional=("width", "height")),
+        risk="standard",
+        metadata={
+            "effects": {"sceneMutation": False, "longRunning": True, "cancellable": False, "outputWrite": True},
+            "tests": ["tests/test_scene_screenshot.py", "tests/test_mcp_visual_content.py"],
+        },
+    )
+
+    def visual_call(method, arguments):
+        require_visual_runtime()
+        return {"changedObjects": [], "result": method(arguments)}
+
+    registry.register(
+        "visual_loop.create",
+        lambda arguments: visual_call(visual_loops.create, arguments),
+        validate=closed_arguments(
+            optional=("loopId", "targetPath", "targetData", "minimumScore", "maxRounds",
+                      "stallWindow", "minimumImprovement"),
+        ),
+        risk="standard",
+    )
+    registry.register(
+        "visual_loop.status",
+        lambda arguments: visual_call(visual_loops.status, arguments),
+        validate=closed_arguments(required=("loopId",)),
+        risk="read",
+    )
+    registry.register(
+        "visual_loop.record_capture",
+        lambda arguments: visual_call(visual_loops.record_capture, arguments),
+        validate=closed_arguments(required=("loopId", "artifact", "transactionId")),
+        risk="standard",
+    )
+    registry.register(
+        "visual_loop.record_verdict",
+        lambda arguments: visual_call(visual_loops.record_verdict, arguments),
+        validate=closed_arguments(
+            required=("loopId", "round", "scores", "issues", "nextActions", "judge"),
+        ),
+        risk="standard",
+    )
+    registry.register(
+        "visual_loop.cancel",
+        lambda arguments: visual_call(visual_loops.cancel, arguments),
+        validate=closed_arguments(required=("loopId",)),
+        risk="standard",
     )
     if exporter is not None:
         def export_file(arguments):
