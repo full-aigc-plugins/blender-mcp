@@ -92,6 +92,11 @@ def addon_entries():
         entries.append((src_root / name, f"partme_blender_mcp/{name}"))
     entries.append((ROOT / "vendor/community/blender_mcp_community/__init__.py",
                     "partme_blender_mcp/provider_backend.py"))
+    sdk_root = ROOT / "vendor/tencentcloud_sdk"
+    entries.extend(
+        (path, "partme_blender_mcp/_vendor/" + path.relative_to(sdk_root).as_posix())
+        for path in files_under(sdk_root)
+    )
     entries.append((ROOT / "THIRD_PARTY_NOTICES.md", "partme_blender_mcp/THIRD_PARTY_NOTICES.md"))
     names = [name for _, name in entries]
     if len(names) != len(set(names)):
@@ -204,11 +209,35 @@ def build(output: Path) -> list[Path]:
             "licenseConcluded": "MIT",
             "licenseDeclared": "MIT",
             "filesAnalyzed": False,
+        }, {
+            "name": "tencentcloud-sdk-python-ai3d",
+            "SPDXID": "SPDXRef-TencentCloud-AI3D-SDK",
+            "versionInfo": "3.1.57",
+            "downloadLocation": "https://pypi.org/project/tencentcloud-sdk-python-ai3d/3.1.57/",
+            "licenseConcluded": "Apache-2.0",
+            "licenseDeclared": "Apache-2.0",
+            "filesAnalyzed": False,
+        }, {
+            "name": "tencentcloud-sdk-python-common",
+            "SPDXID": "SPDXRef-TencentCloud-Common-SDK",
+            "versionInfo": "3.1.57",
+            "downloadLocation": "https://pypi.org/project/tencentcloud-sdk-python-common/3.1.57/",
+            "licenseConcluded": "Apache-2.0",
+            "licenseDeclared": "Apache-2.0",
+            "filesAnalyzed": False,
         }],
         "relationships": [{
             "spdxElementId": "SPDXRef-Package",
             "relationshipType": "DEPENDS_ON",
             "relatedSpdxElement": "SPDXRef-MCP-Python-SDK",
+        }, {
+            "spdxElementId": "SPDXRef-Package",
+            "relationshipType": "DEPENDS_ON",
+            "relatedSpdxElement": "SPDXRef-TencentCloud-AI3D-SDK",
+        }, {
+            "spdxElementId": "SPDXRef-TencentCloud-AI3D-SDK",
+            "relationshipType": "DEPENDS_ON",
+            "relatedSpdxElement": "SPDXRef-TencentCloud-Common-SDK",
         }],
     }
     sbom_path = output / "SBOM.spdx.json"

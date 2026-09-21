@@ -19,7 +19,11 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13"
 ]
-dependencies = ["mcp>=2.2.0,<3"]
+dependencies = [
+  "mcp>=2.2.0,<3",
+  "tencentcloud-sdk-python-ai3d==3.1.57",
+  "tencentcloud-sdk-python-common==3.1.57",
+]
 
 [project.optional-dependencies]
 dev = ["ruff==0.16.7"]

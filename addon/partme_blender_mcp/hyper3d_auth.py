@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import json
 import re
+import tempfile
 import threading
 import webbrowser
 from pathlib import Path
@@ -14,7 +15,35 @@ from urllib.parse import urlparse
 HYPER3D_MCP_NAME = 'hyper3d'
 HYPER3D_MCP_URL = 'https://api.hyper3d.com/api/mcp'
 SUPPORTED_CLIENTS = frozenset({'CODEX', 'CLAUDE'})
+TARGET_CLIENTS = frozenset({'CODEX', 'CLAUDE', 'ZCODE', 'KIMI', 'OTHER'})
 _AUTHORIZATION_URL = re.compile(r'https://[^\s]+')
+
+
+def oauth_success_page_url(directory: str | Path | None = None) -> str:
+    """生成不含凭据的本地授权成功页，并返回浏览器可打开的 URL。"""
+    root = Path(directory) if directory is not None else Path(tempfile.gettempdir())
+    root.mkdir(parents=True, exist_ok=True)
+    target = root / 'partme-hyper3d-oauth-success.html'
+    target.write_text('''<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Hyper3D MCP 授权成功</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;
+    background:#16181d;color:#f4f6fa;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    main{width:min(460px,calc(100% - 40px));padding:48px 42px;text-align:center;background:#23262d;
+    border:1px solid #363a44;border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,.38)}
+    .check{display:grid;place-items:center;width:70px;height:70px;margin:0 auto 24px;border-radius:50%;
+    background:#63d238;color:#10230a;font-size:42px;font-weight:700}h1{margin:0 0 14px;font-size:26px}
+    p{margin:0;color:#b8bec9;font-size:16px;line-height:1.7}.brand{margin-top:28px;color:#7f8795;font-size:13px}
+  </style>
+</head>
+<body><main><div class="check">✓</div><h1>Hyper3D MCP 授权成功</h1>
+<p>可以关闭此页面并返回 Blender。</p><div class="brand">PartMe Blender MCP</div></main></body>
+</html>''', encoding='utf-8')
+    return target.resolve().as_uri()
 
 
 def find_client(client: str) -> str | None:
@@ -78,10 +107,12 @@ def authorization_url(line: str) -> str | None:
 class AuthorizationRunner:
     """后台顺序执行客户端配置与 OAuth 登录，并打开官方授权页。"""
 
-    def __init__(self, commands, *, popen=subprocess.Popen, open_url=webbrowser.open):
+    def __init__(self, commands, *, popen=subprocess.Popen, open_url=webbrowser.open,
+                 success_url=oauth_success_page_url):
         self._commands = [list(command) for command in commands]
         self._popen = popen
         self._open_url = open_url
+        self._success_url = success_url
         self._process = None
         self._returncode = None
         self._cancelled = False
@@ -132,6 +163,11 @@ class AuthorizationRunner:
                 self._returncode = code
                 return
         self._returncode = 0
+        try:
+            self._open_url(self._success_url())
+        except (OSError, ValueError):
+            # 客户端授权已经完成；成功页打开失败不应将授权误报为失败。
+            pass
 
 
 def start_authorization(client: str, executable: str, *, configured: bool,
@@ -189,6 +225,9 @@ def sync_preferences(preferences, *, find=find_client, inspect=inspect_client) -
     if getattr(preferences, 'hyper3d_auth_mode', 'API_KEY') != 'MCP_OAUTH':
         return {'state': 'not_applicable', 'statusText': '当前使用 API Key'}
     client = getattr(preferences, 'hyper3d_oauth_client', 'CODEX')
+    if client not in SUPPORTED_CLIENTS:
+        preferences.hyper3d_oauth_status = 'NOT_AUTHORIZED'
+        return {'state': 'manual', 'statusText': '请在目标 MCP 客户端完成 OAuth'}
     executable = find(client)
     if executable is None:
         status = {'state': 'missing', 'statusText': '未找到所选客户端 CLI'}

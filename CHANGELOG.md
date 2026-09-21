@@ -6,6 +6,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-21
+
+### Added
+
+- Hyper3D Rodin supports MCP OAuth and API-key authentication, including loopback
+  callback handling and Codex, Claude Code, ZCode, Kimi and generic MCP client targets.
+- Sketchfab supports API Token and OAuth authorization-code authentication with state
+  validation, refresh tokens and a centered browser completion page.
+- Tencent Hunyuan 3D supports official Tencent Cloud SDK credentials and a separate
+  TokenHub CLI authorization adapter, with extensible capability profiles.
+- Professional and rapid Hunyuan task types, provider capability registration and
+  release-packaged Tencent Cloud SDK dependencies.
+
+### Changed
+
+- Provider cards expose compact, functional authorization controls while preserving the
+  approved four-tab Blender sidebar layout.
+- Paid generation still passes through cost disclosure, approval, cancellation,
+  authorized directories and transactional import.
+
 ### Fixed
 
 - AI model cards keep provider identity, the compact settings affordance and the
@@ -191,7 +211,10 @@ All notable changes to this project are documented here. The format follows
 - Cross-client guides (Codex, Claude Desktop, Claude Code, MiniMax Design, Cursor, generic
   MCP, macOS, Windows) with a documentation contract test.
 
-[Unreleased]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.5.3...v0.6.0
+[0.5.3]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.5.2...v0.5.3
+[0.5.2]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/full-aigc-plugins/blender-mcp/compare/v0.3.0...v0.4.0

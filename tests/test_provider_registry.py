@@ -12,12 +12,27 @@ from partme_blender_mcp.harness.provider_registry import (
     ProviderDefinition,
     ProviderRegistry,
     ProviderRegistryError,
+    _partme_provider_status,
     register_native_providers,
 )
 from partme_blender_mcp.harness.provider_tasks import ProviderTaskRegistry
 
 
 class ProviderRegistryTests(unittest.TestCase):
+    def test_tokenhub_requires_bearer_api_key_not_oauth_state(self):
+        preferences = SimpleNamespace(
+            hunyuan3d_mode="OFFICIAL_API", hunyuan3d_auth_mode="TOKENHUB_API_KEY",
+            hunyuan3d_tokenhub_status="AUTHORIZED",
+            hunyuan3d_tokenhub_api_key="",
+        )
+        context = SimpleNamespace(preferences=SimpleNamespace(addons={
+            "partme_blender_mcp": SimpleNamespace(preferences=preferences),
+        }))
+        status = _partme_provider_status("hunyuan3d")(context)
+        self.assertEqual(status, {
+            "state": "configuration_required", "statusText": "需要配置 TokenHub API Key",
+        })
+
     def test_status_protocol_groups_native_providers_without_community_polypizza(self):
         registry = ProviderRegistry()
         register_native_providers(registry)
@@ -344,6 +359,11 @@ class ProviderPanelContractTests(unittest.TestCase):
         self.assertIn('community.sketchfab_api_key = self.api_key.strip()', panel)
         self.assertIn('community.hyper3d_api_key = self.api_key.strip()', panel)
         self.assertIn('community.hunyuan3d_secret_key = self.secret_key.strip()', panel)
+        self.assertIn('text="腾讯云 API 凭证"', panel)
+        self.assertIn('layout.prop(self, "account_region")', panel)
+        self.assertIn('layout.prop(self, "service_type")', panel)
+        self.assertIn('layout.prop(self, "task_type")', panel)
+        self.assertNotIn('layout.prop(self, "international_pro")', panel)
         self.assertIn("PARTMEBLENDER_OT_copy_session_id", panel)
         self.assertIn("bpy.app.timers.register(_deferred_provider_sync", panel)
         self.assertIn("bpy.app.timers.unregister(_deferred_provider_sync", panel)

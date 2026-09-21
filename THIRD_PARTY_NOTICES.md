@@ -31,3 +31,14 @@ FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR C
 HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
 CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## Tencent Cloud Python SDK (vendored for Blender)
+
+The Blender Add-on archive includes the `tencentcloud` package trees from
+`tencentcloud-sdk-python-ai3d` 3.1.57 and `tencentcloud-sdk-python-common` 3.1.57.
+Source: https://github.com/TencentCloud/tencentcloud-sdk-python
+
+Copyright © 2017–2026 Tencent Cloud. Licensed under the Apache License, Version 2.0.
+The complete license text and exact wheel provenance are included under
+`vendor/tencentcloud_sdk/` in the source tree and `partme_blender_mcp/_vendor/` in the
+assembled Add-on.

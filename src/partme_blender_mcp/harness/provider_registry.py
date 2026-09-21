@@ -402,8 +402,21 @@ def _partme_provider_status(provider_id):
                 return ({"state": "unavailable", "statusText": "OAuth 已授权 · 客户端连接待验证"} if authorized else
                         {"state": "configuration_required", "statusText": "等待客户端 OAuth 授权"})
             configured = bool(getattr(preferences, "hyper3d_api_key", "").strip())
+        elif provider_id == "sketchfab":
+            oauth = getattr(preferences, "sketchfab_auth_mode", "API_TOKEN") == "OAUTH"
+            if oauth:
+                authorized = (getattr(preferences, "sketchfab_oauth_status", "NOT_AUTHORIZED") == "AUTHORIZED"
+                              and bool(getattr(preferences, "sketchfab_access_token", "").strip()))
+                return ({"state": "ready", "statusText": "OAuth 已授权"} if authorized else
+                        {"state": "configuration_required", "statusText": "等待 Sketchfab OAuth 授权"})
+            configured = bool(getattr(preferences, "sketchfab_api_key", "").strip())
         elif provider_id == "hunyuan3d":
             local = getattr(preferences, "hunyuan3d_mode", "OFFICIAL_API") == "LOCAL_API"
+            tokenhub = getattr(preferences, "hunyuan3d_auth_mode", "TENCENT_CLOUD_API") == "TOKENHUB_API_KEY"
+            if not local and tokenhub:
+                configured = bool(getattr(preferences, "hunyuan3d_tokenhub_api_key", "").strip())
+                if not configured:
+                    return {"state": "configuration_required", "statusText": "需要配置 TokenHub API Key"}
             configured = (bool(getattr(preferences, "hunyuan3d_api_url", "").strip()) if local else
                           bool(getattr(preferences, "hunyuan3d_secret_id", "").strip()
                                and getattr(preferences, "hunyuan3d_secret_key", "").strip()))

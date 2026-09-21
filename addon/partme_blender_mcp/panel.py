@@ -37,6 +37,9 @@ _provider_sync_attempts = 0
 _status_previews = None
 _playback_snapshot = {}
 _hyper3d_oauth_process = None
+_sketchfab_oauth_process = None
+_tokenhub_oauth_process = None
+_tokenhub_oauth_log = None
 
 
 def _refresh_playback_ui():
@@ -208,6 +211,16 @@ def _sync_polypizza_key(context) -> None:
         os.environ["POLYPIZZA_API_KEY"] = preferences.polypizza_api_key
 
 
+_HYPER3D_CLIENT_ITEMS = (
+    ("CODEX", "Codex", "自动配置并在浏览器完成 OAuth"),
+    ("CLAUDE", "Claude Code", "自动配置并在浏览器完成 OAuth"),
+    ("ZCODE", "ZCode", "复制地址后在 ZCode 设置中完成 OAuth"),
+    ("KIMI", "Kimi", "复制地址后在 Kimi MCP 管理界面完成 OAuth"),
+    ("OTHER", "其他 MCP 客户端", "复制地址后由目标客户端完成 OAuth"),
+)
+_HYPER3D_AUTOMATED_CLIENTS = frozenset({"CODEX", "CLAUDE"})
+
+
 def _sync_hyper3d_oauth(context) -> None:
     """Refresh OAuth readiness from the selected client without reading its token."""
     preferences = _addon_preferences(context)
@@ -219,11 +232,23 @@ def _sync_hyper3d_oauth(context) -> None:
     sync_preferences(preferences)
 
 
+def _sync_tokenhub_oauth(context) -> None:
+    """通过 THCLI 退出码刷新状态，不读取其凭证文件或命令输出。"""
+    preferences = _addon_preferences(context)
+    if preferences is None or preferences.hunyuan3d_auth_mode != "TOKENHUB_API_KEY":
+        return
+    if _tokenhub_oauth_process is not None and _tokenhub_oauth_process.poll() is None:
+        return
+    from .tokenhub_auth import sync_preferences
+    sync_preferences(preferences)
+
+
 def _apply_provider_preferences(context, *, refresh=True):
     from .harness.provider_registry import ProviderRegistryError, get_provider_registry
 
     _sync_polypizza_key(context)
     _sync_hyper3d_oauth(context)
+    _sync_tokenhub_oauth(context)
     registry = get_provider_registry()
     if refresh:
         registry.refresh(context)
@@ -280,25 +305,67 @@ class PARTMEBLENDER_Preferences(bpy.types.AddonPreferences):
 
     provider_enabled_json: bpy.props.StringProperty(default="{}", options={"HIDDEN"})
     sketchfab_api_key: bpy.props.StringProperty(name="Sketchfab API Key", subtype="PASSWORD")
+    sketchfab_auth_mode: bpy.props.EnumProperty(name="授权方式", default="API_TOKEN", items=(
+        ("API_TOKEN", "API Token", "使用 Sketchfab 账户 API Token"),
+        ("OAUTH", "OAuth 2.0", "使用已注册的 Sketchfab 应用进行浏览器授权"),
+    ))
+    sketchfab_client_id: bpy.props.StringProperty(name="Client ID")
+    sketchfab_client_secret: bpy.props.StringProperty(name="Client Secret", subtype="PASSWORD")
+    sketchfab_redirect_uri: bpy.props.StringProperty(
+        name="回调地址", default="http://127.0.0.1:9879/oauth/sketchfab/callback")
+    sketchfab_access_token: bpy.props.StringProperty(subtype="PASSWORD", options={"HIDDEN"})
+    sketchfab_refresh_token: bpy.props.StringProperty(subtype="PASSWORD", options={"HIDDEN"})
+    sketchfab_token_expires_at: bpy.props.FloatProperty(default=0.0, options={"HIDDEN"})
+    sketchfab_oauth_status: bpy.props.EnumProperty(default="NOT_AUTHORIZED", options={"HIDDEN"}, items=(
+        ("NOT_AUTHORIZED", "未授权", ""), ("AUTHORIZING", "授权中", ""),
+        ("AUTHORIZED", "已授权", ""), ("ERROR", "授权失败", ""),
+    ))
     hyper3d_api_key: bpy.props.StringProperty(name="Rodin API Key", subtype="PASSWORD")
     hyper3d_auth_mode: bpy.props.EnumProperty(name="授权方式", default="MCP_OAUTH", items=(
         ("MCP_OAUTH", "客户端 OAuth（推荐）", "免费账户通过 Codex 或 Claude Code 浏览器授权"),
         ("API_KEY", "API Key", "开发者 API 使用 Bearer Key"),
     ))
-    hyper3d_oauth_client: bpy.props.EnumProperty(name="授权客户端", default="CODEX", items=(
-        ("CODEX", "Codex", "在 Codex 中配置 Hyper3D MCP"),
-        ("CLAUDE", "Claude Code", "在 Claude Code 中配置 Hyper3D MCP"),
-    ))
+    hyper3d_oauth_client: bpy.props.EnumProperty(
+        name="目标 MCP 客户端", default="CODEX", items=_HYPER3D_CLIENT_ITEMS)
     hyper3d_oauth_status: bpy.props.EnumProperty(default="NOT_AUTHORIZED", options={"HIDDEN"}, items=(
         ("NOT_AUTHORIZED", "未授权", ""), ("AUTHORIZING", "授权中", ""),
         ("AUTHORIZED", "已授权", ""), ("ERROR", "授权失败", ""),
     ))
     hyper3d_mode: bpy.props.EnumProperty(items=(("MAIN_SITE", "hyper3d.ai", ""), ("FAL_AI", "fal.ai", "")))
     hunyuan3d_mode: bpy.props.EnumProperty(items=(("OFFICIAL_API", "腾讯云官方 API", ""), ("LOCAL_API", "本地 API", "")))
+    hunyuan3d_auth_mode: bpy.props.EnumProperty(name="授权方式", default="TENCENT_CLOUD_API", items=(
+        ("TENCENT_CLOUD_API", "腾讯云 API 凭证", "使用 SecretId 与 SecretKey"),
+        ("TOKENHUB_API_KEY", "TokenHub API Key", "使用 TokenHub Bearer API Key 调用 3D 服务"),
+    ))
     hunyuan3d_secret_id: bpy.props.StringProperty(name="SecretId", subtype="PASSWORD")
     hunyuan3d_secret_key: bpy.props.StringProperty(name="SecretKey", subtype="PASSWORD")
+    hunyuan3d_tokenhub_api_key: bpy.props.StringProperty(name="TokenHub API Key", subtype="PASSWORD")
+    hunyuan3d_tokenhub_cli: bpy.props.StringProperty(name="THCLI", subtype="FILE_PATH")
+    hunyuan3d_tokenhub_profile: bpy.props.StringProperty(name="Profile", default="default")
+    hunyuan3d_tokenhub_site: bpy.props.EnumProperty(name="站点", default="cn", items=(
+        ("cn", "国内站", "TokenHub 中国站"), ("intl", "国际站", "TokenHub 国际站"),
+    ))
+    hunyuan3d_tokenhub_status: bpy.props.EnumProperty(default="NOT_AUTHORIZED", options={"HIDDEN"}, items=(
+        ("MISSING", "未安装", ""), ("NOT_AUTHORIZED", "未授权", ""),
+        ("AUTHORIZING", "授权中", ""), ("AUTHORIZED", "已授权", ""), ("ERROR", "错误", ""),
+    ))
     hunyuan3d_api_url: bpy.props.StringProperty(name="API URL")
-    hunyuan3d_intl_pro: bpy.props.BoolProperty(name="国际站 Pro 账户")
+    hunyuan3d_account_region: bpy.props.EnumProperty(name="账户区域", default="MAINLAND", items=(
+        ("MAINLAND", "中国大陆", "腾讯云中国站账户"),
+        ("INTERNATIONAL", "国际站", "Tencent Cloud International 账户"),
+    ))
+    hunyuan3d_service_type: bpy.props.EnumProperty(name="服务类型", default="AI3D", items=(
+        ("AI3D", "AI3D", "中国大陆混元生 3D API"),
+        ("HUNYUAN", "Hunyuan 兼容服务", "国际站兼容服务"),
+    ))
+    hunyuan3d_task_type: bpy.props.EnumProperty(name="任务类型", default="PROFESSIONAL", items=(
+        ("PROFESSIONAL", "专业版", "高精度 3D 生成"),
+        ("RAPID", "极速版", "快速 3D 生成"),
+    ))
+    hunyuan3d_intl_pro: bpy.props.BoolProperty(
+        name="旧版国际站 Pro 账户", options={"HIDDEN"},
+        description="仅用于迁移旧版本首选项",
+    )
     polypizza_api_key: bpy.props.StringProperty(
         name="Poly Pizza API Key",
         description="Stored in Blender user preferences; never written to the .blend or MCP receipts",
@@ -508,13 +575,27 @@ class PARTMEBLENDER_OT_hyper3d_oauth(bpy.types.Operator):
     bl_idname = "partme_blender.hyper3d_oauth"
     bl_label = "Hyper3D 浏览器授权"
     bl_description = "在所选客户端中配置 Hyper3D MCP，并通过浏览器 OAuth 授权"
-    client: bpy.props.EnumProperty(items=(("CODEX", "Codex", ""),
-                                          ("CLAUDE", "Claude Code", "")))
+    client: bpy.props.EnumProperty(items=_HYPER3D_CLIENT_ITEMS)
     _process = None
     _timer = None
 
     def invoke(self, context, _event):
         global _hyper3d_oauth_process
+        preferences = _addon_preferences(context)
+        preferences.hyper3d_auth_mode = "MCP_OAUTH"
+        preferences.hyper3d_oauth_client = self.client
+        if self.client not in _HYPER3D_AUTOMATED_CLIENTS:
+            from .hyper3d_auth import HYPER3D_MCP_URL
+            context.window_manager.clipboard = HYPER3D_MCP_URL
+            preferences.hyper3d_oauth_status = "NOT_AUTHORIZED"
+            bpy.ops.wm.save_userpref()
+            instruction = {
+                "ZCODE": "已复制地址；请在 ZCode 设置 → MCP 中添加 HTTP 服务、启用 OAuth并点击授权",
+                "KIMI": "已复制地址；请在 Kimi MCP 管理界面添加 HTTP 服务并完成 OAuth",
+                "OTHER": "已复制地址；请在目标 MCP 客户端添加 Streamable HTTP 服务并完成 OAuth",
+            }[self.client]
+            self.report({"INFO"}, instruction)
+            return {"FINISHED"}
         if _hyper3d_oauth_process is not None and _hyper3d_oauth_process.poll() is None:
             self.report({"WARNING"}, "Hyper3D OAuth 授权正在进行")
             return {"CANCELLED"}
@@ -531,9 +612,6 @@ class PARTMEBLENDER_OT_hyper3d_oauth(bpy.types.Operator):
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
         _hyper3d_oauth_process = self._process
-        preferences = _addon_preferences(context)
-        preferences.hyper3d_auth_mode = "MCP_OAUTH"
-        preferences.hyper3d_oauth_client = self.client
         preferences.hyper3d_oauth_status = "AUTHORIZING"
         self._timer = context.window_manager.event_timer_add(0.5, window=context.window)
         context.window_manager.modal_handler_add(self)
@@ -581,19 +659,174 @@ class PARTMEBLENDER_OT_hyper3d_oauth(bpy.types.Operator):
         return {"FINISHED" if preferences.hyper3d_oauth_status == "AUTHORIZED" else "CANCELLED"}
 
 
+class PARTMEBLENDER_OT_sketchfab_oauth(bpy.types.Operator):
+    bl_idname = "partme_blender.sketchfab_oauth"
+    bl_label = "Sketchfab 浏览器授权"
+    bl_description = "启动本机回调并通过 Sketchfab OAuth 2.0 授权"
+    client_id: bpy.props.StringProperty(options={"HIDDEN", "SKIP_SAVE"})
+    client_secret: bpy.props.StringProperty(options={"HIDDEN", "SKIP_SAVE"})
+    redirect_uri: bpy.props.StringProperty(options={"HIDDEN", "SKIP_SAVE"})
+    _process = None
+    _timer = None
+
+    def invoke(self, context, _event):
+        global _sketchfab_oauth_process
+        if _sketchfab_oauth_process is not None and _sketchfab_oauth_process.poll() is None:
+            self.report({"WARNING"}, "Sketchfab OAuth 授权正在进行")
+            return {"CANCELLED"}
+        preferences = _addon_preferences(context)
+        try:
+            from .sketchfab_auth import start_authorization
+            self._process = start_authorization(
+                self.client_id.strip(), self.client_secret, self.redirect_uri.strip())
+        except (OSError, ValueError) as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        preferences.sketchfab_auth_mode = "OAUTH"
+        preferences.sketchfab_client_id = self.client_id.strip()
+        preferences.sketchfab_client_secret = self.client_secret
+        preferences.sketchfab_redirect_uri = self.redirect_uri.strip()
+        preferences.sketchfab_oauth_status = "AUTHORIZING"
+        _sketchfab_oauth_process = self._process
+        self._timer = context.window_manager.event_timer_add(0.5, window=context.window)
+        context.window_manager.modal_handler_add(self)
+        self.report({"INFO"}, "请在浏览器确认 Sketchfab 授权")
+        return {"RUNNING_MODAL"}
+
+    def modal(self, context, event):
+        if event.type == "ESC":
+            return self._finish(context, cancelled=True)
+        if event.type != "TIMER" or self._process.poll() is None:
+            return {"PASS_THROUGH"}
+        return self._finish(context, cancelled=False)
+
+    def _finish(self, context, *, cancelled):
+        global _sketchfab_oauth_process
+        if self._timer is not None:
+            context.window_manager.event_timer_remove(self._timer)
+            self._timer = None
+        preferences = _addon_preferences(context)
+        if cancelled:
+            self._process.terminate()
+            preferences.sketchfab_oauth_status = "NOT_AUTHORIZED"
+            message = "已取消 Sketchfab OAuth 授权"
+        elif self._process.returncode == 0 and self._process.result:
+            from .sketchfab_auth import apply_token_response
+            apply_token_response(preferences, self._process.result)
+            message = "Sketchfab OAuth 已授权"
+        else:
+            preferences.sketchfab_oauth_status = "ERROR"
+            message = self._process.error or "Sketchfab OAuth 授权失败"
+        _sketchfab_oauth_process = None
+        bpy.ops.wm.save_userpref()
+        from .harness.provider_registry import get_provider_registry
+        get_provider_registry().refresh(context)
+        for area in context.screen.areas:
+            if area.type == "VIEW_3D":
+                area.tag_redraw()
+        success = preferences.sketchfab_oauth_status == "AUTHORIZED"
+        self.report({"INFO" if success else "WARNING"}, message)
+        return {"FINISHED" if success else "CANCELLED"}
+
+
+class PARTMEBLENDER_OT_tokenhub_oauth(bpy.types.Operator):
+    bl_idname = "partme_blender.tokenhub_oauth"
+    bl_label = "TokenHub 浏览器授权"
+    bl_description = "由 TokenHub CLI 打开浏览器授权；凭证不会进入 Blender"
+    profile: bpy.props.StringProperty(default="default")
+    site: bpy.props.EnumProperty(items=(("cn", "国内站", ""), ("intl", "国际站", "")))
+    _process = None
+    _timer = None
+
+    def invoke(self, context, _event):
+        global _tokenhub_oauth_process, _tokenhub_oauth_log
+        if _tokenhub_oauth_process is not None and _tokenhub_oauth_process.poll() is None:
+            self.report({"WARNING"}, "TokenHub OAuth 授权正在进行")
+            return {"CANCELLED"}
+        preferences = _addon_preferences(context)
+        from .tokenhub_auth import find_thcli, start_authorization
+        executable = find_thcli(preferences.hunyuan3d_tokenhub_cli)
+        if executable is None:
+            preferences.hunyuan3d_tokenhub_status = "MISSING"
+            self.report({"ERROR"}, "未安装 TokenHub CLI；请先按官方文档安装 tencent-tokenhub-cli")
+            return {"CANCELLED"}
+        try:
+            self._process, _tokenhub_oauth_log = start_authorization(
+                executable, profile=self.profile, site=self.site)
+        except (OSError, subprocess.SubprocessError, ValueError) as exc:
+            preferences.hunyuan3d_tokenhub_status = "ERROR"
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        _tokenhub_oauth_process = self._process
+        preferences.hunyuan3d_auth_mode = "TOKENHUB_API_KEY"
+        preferences.hunyuan3d_tokenhub_profile = self.profile.strip() or "default"
+        preferences.hunyuan3d_tokenhub_site = self.site
+        preferences.hunyuan3d_tokenhub_status = "AUTHORIZING"
+        self._timer = context.window_manager.event_timer_add(0.5, window=context.window)
+        context.window_manager.modal_handler_add(self)
+        self.report({"INFO"}, "请在浏览器完成腾讯云 TokenHub 授权")
+        return {"RUNNING_MODAL"}
+
+    def modal(self, context, event):
+        if event.type == "ESC":
+            return self._finish(context, cancelled=True)
+        if event.type != "TIMER" or self._process.poll() is None:
+            return {"PASS_THROUGH"}
+        return self._finish(context, cancelled=False)
+
+    def _finish(self, context, *, cancelled):
+        global _tokenhub_oauth_process, _tokenhub_oauth_log
+        if self._timer is not None:
+            context.window_manager.event_timer_remove(self._timer)
+            self._timer = None
+        if cancelled and self._process is not None and self._process.poll() is None:
+            self._process.terminate()
+        preferences = _addon_preferences(context)
+        if cancelled:
+            preferences.hunyuan3d_tokenhub_status = "NOT_AUTHORIZED"
+            message = "已取消 TokenHub OAuth 授权"
+        else:
+            from .tokenhub_auth import find_thcli, inspect_status
+            executable = find_thcli(preferences.hunyuan3d_tokenhub_cli)
+            status = inspect_status(executable, profile=self.profile, site=self.site)
+            authorized = self._process.returncode == 0 and status["state"] == "authorized"
+            preferences.hunyuan3d_tokenhub_status = "AUTHORIZED" if authorized else "ERROR"
+            message = "TokenHub OAuth 已授权" if authorized else status["statusText"]
+        _tokenhub_oauth_process = None
+        if _tokenhub_oauth_log is not None:
+            try:
+                Path(_tokenhub_oauth_log).unlink(missing_ok=True)
+            except OSError:
+                pass
+            _tokenhub_oauth_log = None
+        bpy.ops.wm.save_userpref()
+        from .harness.provider_registry import get_provider_registry
+        get_provider_registry().refresh(context)
+        for area in context.screen.areas:
+            if area.type == "VIEW_3D":
+                area.tag_redraw()
+        self.report({"INFO" if preferences.hunyuan3d_tokenhub_status == "AUTHORIZED" else "WARNING"}, message)
+        return {"FINISHED" if preferences.hunyuan3d_tokenhub_status == "AUTHORIZED" else "CANCELLED"}
+
+
 class PARTMEBLENDER_OT_provider_settings(bpy.types.Operator):
     bl_idname = "partme_blender.provider_settings"
     bl_label = "配置供应商"
     provider_id: bpy.props.StringProperty()
     enable_after_save: bpy.props.BoolProperty(default=False, options={"HIDDEN", "SKIP_SAVE"})
     api_key: bpy.props.StringProperty(name="API Key", subtype="PASSWORD")
+    sketchfab_auth_mode: bpy.props.EnumProperty(name="授权方式", items=(
+        ("API_TOKEN", "API Token", "使用账户 API Token"),
+        ("OAUTH", "OAuth 2.0", "使用注册应用进行浏览器授权"),
+    ))
+    sketchfab_client_id: bpy.props.StringProperty(name="Client ID")
+    sketchfab_client_secret: bpy.props.StringProperty(name="Client Secret", subtype="PASSWORD")
+    sketchfab_redirect_uri: bpy.props.StringProperty(name="回调地址")
     hyper3d_auth_mode: bpy.props.EnumProperty(name="授权方式", items=(
         ("MCP_OAUTH", "客户端 OAuth（推荐）", "免费账户通过浏览器授权，不向 Blender 提供 Token"),
         ("API_KEY", "API Key", "使用 Hyper3D 或 fal.ai 开发者 API Key"),
     ))
-    oauth_client: bpy.props.EnumProperty(name="授权客户端", items=(
-        ("CODEX", "Codex", ""), ("CLAUDE", "Claude Code", ""),
-    ))
+    oauth_client: bpy.props.EnumProperty(name="目标 MCP 客户端", items=_HYPER3D_CLIENT_ITEMS)
     hyper3d_mode: bpy.props.EnumProperty(
         name="平台", items=(("MAIN_SITE", "hyper3d.ai", "hyper3d.ai"), ("FAL_AI", "fal.ai", "fal.ai")),
     )
@@ -601,10 +834,31 @@ class PARTMEBLENDER_OT_provider_settings(bpy.types.Operator):
         name="接入模式", items=(("LOCAL_API", "本地 API", "本地 Hunyuan3D API"),
                             ("OFFICIAL_API", "腾讯云官方 API", "腾讯云 Hunyuan3D API")),
     )
+    hunyuan_auth_mode: bpy.props.EnumProperty(name="授权方式", items=(
+        ("TENCENT_CLOUD_API", "腾讯云 API 凭证", "使用 SecretId 与 SecretKey"),
+        ("TOKENHUB_API_KEY", "TokenHub API Key", "使用 TokenHub Bearer API Key 调用 3D 服务"),
+    ))
     secret_id: bpy.props.StringProperty(name="SecretId", subtype="PASSWORD")
     secret_key: bpy.props.StringProperty(name="SecretKey", subtype="PASSWORD")
+    tokenhub_api_key: bpy.props.StringProperty(name="TokenHub API Key", subtype="PASSWORD")
+    tokenhub_cli: bpy.props.StringProperty(name="THCLI", subtype="FILE_PATH")
+    tokenhub_profile: bpy.props.StringProperty(name="Profile", default="default")
+    tokenhub_site: bpy.props.EnumProperty(name="站点", items=(
+        ("cn", "国内站", ""), ("intl", "国际站", ""),
+    ))
     api_url: bpy.props.StringProperty(name="API URL")
-    international_pro: bpy.props.BoolProperty(name="国际站 Pro 账户")
+    account_region: bpy.props.EnumProperty(name="账户区域", items=(
+        ("MAINLAND", "中国大陆", "腾讯云中国站账户"),
+        ("INTERNATIONAL", "国际站", "Tencent Cloud International 账户"),
+    ))
+    service_type: bpy.props.EnumProperty(name="服务类型", items=(
+        ("AI3D", "AI3D", "中国大陆混元生 3D API"),
+        ("HUNYUAN", "Hunyuan 兼容服务", "国际站兼容服务"),
+    ))
+    task_type: bpy.props.EnumProperty(name="任务类型", items=(
+        ("PROFESSIONAL", "专业版", "高精度 3D 生成"),
+        ("RAPID", "极速版", "快速 3D 生成"),
+    ))
 
     def _provider_preferences(self, context):
         return _addon_preferences(context)
@@ -616,6 +870,10 @@ class PARTMEBLENDER_OT_provider_settings(bpy.types.Operator):
             self.api_key = preferences.polypizza_api_key
         elif self.provider_id == "sketchfab" and community is not None:
             self.api_key = community.sketchfab_api_key
+            self.sketchfab_auth_mode = community.sketchfab_auth_mode
+            self.sketchfab_client_id = community.sketchfab_client_id
+            self.sketchfab_client_secret = community.sketchfab_client_secret
+            self.sketchfab_redirect_uri = community.sketchfab_redirect_uri
         elif self.provider_id == "hyper3d" and community is not None:
             self.api_key = community.hyper3d_api_key
             self.hyper3d_mode = community.hyper3d_mode
@@ -623,10 +881,20 @@ class PARTMEBLENDER_OT_provider_settings(bpy.types.Operator):
             self.oauth_client = community.hyper3d_oauth_client
         elif self.provider_id == "hunyuan3d" and community is not None:
             self.hunyuan3d_mode = community.hunyuan3d_mode
+            self.hunyuan_auth_mode = getattr(community, "hunyuan3d_auth_mode", "TENCENT_CLOUD_API")
             self.secret_id = community.hunyuan3d_secret_id
             self.secret_key = community.hunyuan3d_secret_key
+            self.tokenhub_api_key = getattr(community, "hunyuan3d_tokenhub_api_key", "")
+            self.tokenhub_cli = getattr(community, "hunyuan3d_tokenhub_cli", "")
+            self.tokenhub_profile = getattr(community, "hunyuan3d_tokenhub_profile", "default")
+            self.tokenhub_site = getattr(community, "hunyuan3d_tokenhub_site", "cn")
             self.api_url = community.hunyuan3d_api_url
-            self.international_pro = community.hunyuan3d_intl_pro
+            self.account_region = getattr(community, "hunyuan3d_account_region", "MAINLAND")
+            self.service_type = getattr(community, "hunyuan3d_service_type", "AI3D")
+            self.task_type = getattr(community, "hunyuan3d_task_type", "PROFESSIONAL")
+            if (getattr(community, "hunyuan3d_intl_pro", False)
+                    and self.account_region == "MAINLAND" and self.service_type == "AI3D"):
+                self.account_region, self.service_type = "INTERNATIONAL", "HUNYUAN"
         else:
             self.report({"WARNING"}, "供应商配置不可用；请确认对应 Add-on 已启用")
             return {"CANCELLED"}
@@ -643,8 +911,27 @@ class PARTMEBLENDER_OT_provider_settings(bpy.types.Operator):
             "hyper3d": "Hyper3D Rodin",
             "hunyuan3d": "腾讯混元 3D",
         }.get(self.provider_id, "供应商"), icon="LOCKED")
-        if self.provider_id in {"polypizza", "sketchfab"}:
+        if self.provider_id == "polypizza":
             layout.prop(self, "api_key")
+            layout.label(text="Poly Pizza 当前使用 API Key", icon="LOCKED")
+        elif self.provider_id == "sketchfab":
+            layout.prop(self, "sketchfab_auth_mode")
+            if self.sketchfab_auth_mode == "API_TOKEN":
+                layout.prop(self, "api_key", text="API Token")
+            else:
+                layout.prop(self, "sketchfab_client_id")
+                layout.prop(self, "sketchfab_client_secret")
+                layout.prop(self, "sketchfab_redirect_uri")
+                status = _addon_preferences(bpy.context).sketchfab_oauth_status
+                layout.label(text={"AUTHORIZED": "OAuth 已授权", "AUTHORIZING": "等待浏览器授权",
+                                   "ERROR": "授权失败，请重试"}.get(status, "尚未授权"),
+                             icon="CHECKMARK" if status == "AUTHORIZED" else "INFO")
+                action = layout.operator(PARTMEBLENDER_OT_sketchfab_oauth.bl_idname,
+                                         text="重新授权" if status == "AUTHORIZED" else "浏览器授权",
+                                         icon="URL")
+                action.client_id = self.sketchfab_client_id
+                action.client_secret = self.sketchfab_client_secret
+                action.redirect_uri = self.sketchfab_redirect_uri
         elif self.provider_id == "hyper3d":
             layout.prop(self, "hyper3d_auth_mode")
             if self.hyper3d_auth_mode == "MCP_OAUTH":
@@ -655,8 +942,10 @@ class PARTMEBLENDER_OT_provider_settings(bpy.types.Operator):
                                    "AUTHORIZING": "等待浏览器授权",
                                    "ERROR": "授权失败，请重试"}.get(status, "尚未授权"),
                              icon="CHECKMARK" if status == "AUTHORIZED" else "INFO")
+                automatic = self.oauth_client in _HYPER3D_AUTOMATED_CLIENTS
                 action = layout.operator(PARTMEBLENDER_OT_hyper3d_oauth.bl_idname,
-                                         text="重新授权" if status == "AUTHORIZED" else "浏览器授权",
+                                         text=("重新授权" if status == "AUTHORIZED" else "浏览器授权")
+                                         if automatic else "复制配置",
                                          icon="URL")
                 action.client = self.oauth_client
             else:
@@ -665,12 +954,37 @@ class PARTMEBLENDER_OT_provider_settings(bpy.types.Operator):
         elif self.provider_id == "hunyuan3d":
             layout.prop(self, "hunyuan3d_mode")
             if self.hunyuan3d_mode == "OFFICIAL_API":
-                layout.prop(self, "secret_id")
-                layout.prop(self, "secret_key")
-                layout.prop(self, "international_pro")
+                layout.prop(self, "hunyuan_auth_mode")
+                if self.hunyuan_auth_mode == "TENCENT_CLOUD_API":
+                    layout.label(text="腾讯云 API 凭证", icon="LOCKED")
+                    layout.prop(self, "secret_id")
+                    layout.prop(self, "secret_key")
+                    layout.prop(self, "account_region")
+                    layout.prop(self, "service_type")
+                else:
+                    layout.label(text="TokenHub API Key", icon="LOCKED")
+                    layout.prop(self, "tokenhub_api_key")
+                    layout.label(text="THCLI OAuth（密钥管理助手）", icon="URL")
+                    layout.prop(self, "tokenhub_cli")
+                    layout.prop(self, "tokenhub_profile")
+                    layout.prop(self, "tokenhub_site")
+                    status = _addon_preferences(bpy.context).hunyuan3d_tokenhub_status
+                    layout.label(text={"MISSING": "未安装 TokenHub CLI（不影响手动填写 Key）",
+                                       "AUTHORIZED": "THCLI OAuth 已授权",
+                                       "AUTHORIZING": "等待浏览器授权",
+                                       "ERROR": "授权失败，请重试"}.get(status, "尚未授权"),
+                                 icon="CHECKMARK" if status == "AUTHORIZED" else "INFO")
+                    action = layout.operator(PARTMEBLENDER_OT_tokenhub_oauth.bl_idname,
+                                             text="重新授权" if status == "AUTHORIZED" else "授权",
+                                             icon="URL")
+                    action.profile = self.tokenhub_profile
+                    action.site = self.tokenhub_site
+                layout.prop(self, "task_type")
             else:
                 layout.prop(self, "api_url")
-        if self.provider_id != "hyper3d" or self.hyper3d_auth_mode == "API_KEY":
+        if self.provider_id == "hunyuan3d" and self.hunyuan_auth_mode == "TOKENHUB_API_KEY":
+            layout.label(text="OAuth 不等于调用凭证；API Key 仅保存在本机", icon="LOCKED")
+        elif self.provider_id != "hyper3d" or self.hyper3d_auth_mode == "API_KEY":
             layout.label(text="凭证仅保存在本机 Blender 用户配置中", icon="INFO")
         else:
             layout.label(text="OAuth Token 由客户端保管，不写入 Blender", icon="LOCKED")
@@ -682,17 +996,39 @@ class PARTMEBLENDER_OT_provider_settings(bpy.types.Operator):
             preferences.polypizza_api_key = self.api_key.strip()
         elif self.provider_id == "sketchfab" and community is not None:
             community.sketchfab_api_key = self.api_key.strip()
+            community.sketchfab_auth_mode = self.sketchfab_auth_mode
+            community.sketchfab_client_id = self.sketchfab_client_id.strip()
+            community.sketchfab_client_secret = self.sketchfab_client_secret
+            community.sketchfab_redirect_uri = self.sketchfab_redirect_uri.strip()
+            if self.sketchfab_auth_mode == "API_TOKEN":
+                community.sketchfab_oauth_status = "NOT_AUTHORIZED"
         elif self.provider_id == "hyper3d" and community is not None:
             community.hyper3d_auth_mode = self.hyper3d_auth_mode
             community.hyper3d_oauth_client = self.oauth_client
             community.hyper3d_mode = self.hyper3d_mode
             community.hyper3d_api_key = self.api_key.strip()
         elif self.provider_id == "hunyuan3d" and community is not None:
+            if self.hunyuan3d_mode == "OFFICIAL_API":
+                from .hunyuan_capabilities import resolve_capability
+                try:
+                    resolve_capability(self.task_type, self.account_region, self.service_type)
+                except ValueError as exc:
+                    self.report({"WARNING"}, str(exc))
+                    return {"CANCELLED"}
             community.hunyuan3d_mode = self.hunyuan3d_mode
+            community.hunyuan3d_auth_mode = self.hunyuan_auth_mode
             community.hunyuan3d_secret_id = self.secret_id.strip()
             community.hunyuan3d_secret_key = self.secret_key.strip()
+            community.hunyuan3d_tokenhub_api_key = self.tokenhub_api_key.strip()
+            community.hunyuan3d_tokenhub_cli = self.tokenhub_cli.strip()
+            community.hunyuan3d_tokenhub_profile = self.tokenhub_profile.strip() or "default"
+            community.hunyuan3d_tokenhub_site = self.tokenhub_site
             community.hunyuan3d_api_url = self.api_url.strip()
-            community.hunyuan3d_intl_pro = self.international_pro
+            community.hunyuan3d_account_region = self.account_region
+            community.hunyuan3d_service_type = self.service_type
+            community.hunyuan3d_task_type = self.task_type
+            community.hunyuan3d_intl_pro = (
+                self.account_region == "INTERNATIONAL" and self.service_type == "HUNYUAN")
         else:
             self.report({"WARNING"}, "供应商配置不可用")
             return {"CANCELLED"}
@@ -1024,10 +1360,21 @@ def _draw_provider_rows(layout, context, category):
         layout.label(text="没有已注册的供应商", icon="INFO")
         return
     compact = _sidebar_width(context) < _COMPACT_REGION_WIDTH
+    preferences = _addon_preferences(context)
     for provider in providers:
         box = layout.box()
         task = provider.get("task")
         active = task is not None and task["active"]
+        hyper3d_provider = (
+            provider["providerId"] == "hyper3d"
+            and preferences is not None
+        )
+        tokenhub_provider = (
+            provider["providerId"] == "hunyuan3d"
+            and preferences is not None
+            and preferences.hunyuan3d_mode == "OFFICIAL_API"
+            and preferences.hunyuan3d_auth_mode == "TOKENHUB_API_KEY"
+        )
         row = box.row(align=True)
         row.scale_y = 1.35
         # 社区式单行：左侧勾选框，名称占主体，右侧仅状态和配置。
@@ -1059,7 +1406,26 @@ def _draw_provider_rows(layout, context, category):
                 text="", icon="PREFERENCES", emboss=False,
             )
             action.provider_id = provider["providerId"]
-        if provider["state"] in {"configuration_required", "error", "unavailable"}:
+        if hyper3d_provider and not active:
+            oauth = box.row(align=True)
+            oauth.alert = preferences.hyper3d_oauth_status == "ERROR"
+            oauth.label(text="MCP OAuth", icon="URL")
+            automatic = preferences.hyper3d_oauth_client in _HYPER3D_AUTOMATED_CLIENTS
+            action = _small_actions(oauth, 3.2).operator(
+                PARTMEBLENDER_OT_hyper3d_oauth.bl_idname,
+                text="授权" if automatic else "复制配置",
+            )
+            action.client = preferences.hyper3d_oauth_client
+        if tokenhub_provider and not active:
+            oauth = box.row(align=True)
+            oauth.alert = preferences.hunyuan3d_tokenhub_status == "ERROR"
+            oauth.label(text="THCLI OAuth", icon="URL")
+            action = _small_actions(oauth, 3.2).operator(
+                PARTMEBLENDER_OT_tokenhub_oauth.bl_idname, text="授权")
+            action.profile = preferences.hunyuan3d_tokenhub_profile
+            action.site = preferences.hunyuan3d_tokenhub_site
+        if (provider["state"] in {"configuration_required", "error", "unavailable"}
+                and not hyper3d_provider and not tokenhub_provider):
             detail = box.column(align=True)
             detail.alert = provider["state"] == "error"
             _wrapped_label(detail, context, provider["statusText"])
@@ -1333,6 +1699,8 @@ CLASSES = (
     PARTMEBLENDER_OT_refresh_providers,
     PARTMEBLENDER_OT_set_provider_enabled,
     PARTMEBLENDER_OT_hyper3d_oauth,
+    PARTMEBLENDER_OT_sketchfab_oauth,
+    PARTMEBLENDER_OT_tokenhub_oauth,
     PARTMEBLENDER_OT_provider_settings,
     PARTMEBLENDER_OT_cancel_provider_task,
     PARTMEBLENDER_OT_execution_settings,

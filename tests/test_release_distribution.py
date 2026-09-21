@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.5.3"
+VERSION = "0.6.0"
 
 
 class RepositoryStructureTests(unittest.TestCase):
@@ -160,6 +160,16 @@ class ReleasePackageTests(unittest.TestCase):
                 self.assertIn("partme_blender_mcp/__init__.py", archive_names)
                 self.assertIn("partme_blender_mcp/panel.py", archive_names)
                 self.assertIn("partme_blender_mcp/harness/server.py", archive_names)
+                self.assertIn(
+                    "partme_blender_mcp/_vendor/tencentcloud/ai3d/v20250513/ai3d_client.py",
+                    archive_names,
+                )
+                self.assertIn(
+                    "partme_blender_mcp/_vendor/tencentcloud/common/credential.py",
+                    archive_names,
+                )
+                self.assertIn("partme_blender_mcp/_vendor/PROVENANCE.md", archive_names)
+                self.assertIn("partme_blender_mcp/_vendor/LICENSE.txt", archive_names)
                 for state in ("ready", "busy", "configuration_required", "disabled", "error"):
                     self.assertIn(f"partme_blender_mcp/icons/status_{state}.png", archive_names)
                 self.assertIn("partme_blender_mcp/icons/status_ready_check.png", archive_names)

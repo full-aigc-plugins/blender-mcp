@@ -1,5 +1,8 @@
 """PartMe 所有的进程内供应商执行器；不注册社区 UI，不监听 9876。"""
 from . import provider_backend
+from .hunyuan_capabilities import resolve_request, resolve_tokenhub_model
+from .hunyuan_sdk import invoke_hunyuan_sdk
+from .tokenhub_3d import query as query_tokenhub_3d, submit as submit_tokenhub_3d
 from .harness.errors import HarnessError
 import base64
 import re
@@ -38,6 +41,45 @@ NETWORK_QUERY_COMMANDS = frozenset({
 })
 
 
+def _sketchfab_settings(preferences):
+    """在主线程捕获可用 Token；仅在 OAuth 临近过期时执行一次有界刷新。"""
+    mode = str(getattr(preferences, 'sketchfab_auth_mode', 'API_TOKEN'))
+    access_token = str(getattr(preferences, 'sketchfab_access_token', ''))
+    if mode == 'OAUTH':
+        from .sketchfab_auth import refresh_access_token
+        try:
+            access_token = refresh_access_token(preferences, http=provider_backend.requests)
+        except ValueError as exc:
+            preferences.sketchfab_oauth_status = 'ERROR'
+            raise HarnessError('PROVIDER_AUTH_FAILED', str(exc)) from exc
+    return {
+        'sketchfab_api_key': str(getattr(preferences, 'sketchfab_api_key', '')),
+        'sketchfab_auth_mode': mode,
+        'sketchfab_access_token': access_token,
+    }
+
+
+def _hunyuan_settings(preferences, *, task_type=None):
+    """读取新配置并兼容旧版 international Pro 布尔首选项。"""
+    legacy_international = bool(getattr(preferences, 'hunyuan3d_intl_pro', False))
+    account_region = str(getattr(preferences, 'hunyuan3d_account_region', '') or
+                         ('INTERNATIONAL' if legacy_international else 'MAINLAND'))
+    service_type = str(getattr(preferences, 'hunyuan3d_service_type', '') or
+                       ('HUNYUAN' if legacy_international else 'AI3D'))
+    selected_task = str(task_type or getattr(
+        preferences, 'hunyuan3d_task_type', 'PROFESSIONAL') or 'PROFESSIONAL')
+    return {
+        'hunyuan3d_auth_mode': str(getattr(
+            preferences, 'hunyuan3d_auth_mode', 'TENCENT_CLOUD_API')),
+        'hunyuan3d_secret_id': str(getattr(preferences, 'hunyuan3d_secret_id', '')),
+        'hunyuan3d_secret_key': str(getattr(preferences, 'hunyuan3d_secret_key', '')),
+        'hunyuan3d_tokenhub_api_key': str(getattr(preferences, 'hunyuan3d_tokenhub_api_key', '')),
+        'hunyuan3d_account_region': account_region,
+        'hunyuan3d_service_type': service_type,
+        'hunyuan3d_task_type': selected_task,
+    }
+
+
 def _redraw_provider_tasks():
     """Blender 主线程定时器：后台任务变化时刷新侧栏，不在线程里调用 UI。"""
     global _last_task_snapshot
@@ -64,9 +106,7 @@ def _start_generation_poll(command, task, *, remote_task_id=None, settings=None)
         settings = {
             'hyper3d_api_key': str(getattr(preferences, 'hyper3d_api_key', '')),
             'hyper3d_mode': str(getattr(preferences, 'hyper3d_mode', 'MAIN_SITE')),
-            'hunyuan3d_secret_id': str(getattr(preferences, 'hunyuan3d_secret_id', '')),
-            'hunyuan3d_secret_key': str(getattr(preferences, 'hunyuan3d_secret_key', '')),
-            'hunyuan3d_intl_pro': bool(getattr(preferences, 'hunyuan3d_intl_pro', False)),
+            **_hunyuan_settings(preferences),
         }
     task_id = str(remote_task_id or task.get('remoteTaskId') or task['taskId'])
     http = provider_backend.requests
@@ -92,18 +132,21 @@ def _start_generation_poll(command, task, *, remote_task_id=None, settings=None)
                     return response.json()
     elif command == 'create_hunyuan_job':
         poll_command, params = 'poll_hunyuan_job_status', {'job_id': task_id}
-        secret_id, secret_key = settings['hunyuan3d_secret_id'], settings['hunyuan3d_secret_key']
-        profile = dict(provider_backend.hunyuan_api_profile(settings['hunyuan3d_intl_pro']))
-        signer = ProviderEngine.get_tencent_cloud_sign_headers
-        def query():
-            data = {'JobId': task_id.removeprefix('job_')}
-            headers, endpoint = signer('POST', '/', {'Action': profile['query_action'],
-                'Version': profile['version'], 'Region': profile['region']}, data,
-                profile['service'], profile['region'], secret_id, secret_key)
-            with http.post(endpoint, headers=headers, data=json.dumps(data),
-                    timeout=(5, 20), allow_redirects=False) as response:
-                response.raise_for_status()
-                return response.json()
+        if settings['hunyuan3d_auth_mode'] == 'TOKENHUB_API_KEY':
+            model = resolve_tokenhub_model(settings['hunyuan3d_task_type'])
+            def query():
+                return query_tokenhub_3d(
+                    http, model, task_id.removeprefix('job_'),
+                    settings['hunyuan3d_tokenhub_api_key'])
+        else:
+            secret_id, secret_key = settings['hunyuan3d_secret_id'], settings['hunyuan3d_secret_key']
+            profile = resolve_request(
+                settings['hunyuan3d_task_type'], settings['hunyuan3d_account_region'],
+                settings['hunyuan3d_service_type'])
+            def query():
+                data = {'JobId': task_id.removeprefix('job_')}
+                return invoke_hunyuan_sdk(
+                    profile['query_action'], data, profile, secret_id, secret_key)
     else:
         raise ValueError('local provider polling is not available')
     if _poller is None:
@@ -136,6 +179,52 @@ class ProviderEngine(provider_backend.BlenderMCPServer):
 
     def _get_hyper3d_api_key(self):
         return self._get_config_value('', 'hyper3d_api_key')
+
+    def _sketchfab_headers(self):
+        mode = self._get_config_value('', 'sketchfab_auth_mode') or 'API_TOKEN'
+        if mode == 'OAUTH':
+            token = self._get_config_value('', 'sketchfab_access_token')
+            if not token:
+                raise HarnessError('PROVIDER_CONFIGURATION_REQUIRED', 'Sketchfab OAuth 未授权')
+            return {'Authorization': f'Bearer {token}'}
+        token = self._get_config_value('', 'sketchfab_api_key')
+        if not token:
+            raise HarnessError('PROVIDER_CONFIGURATION_REQUIRED', 'Sketchfab API Token 未配置')
+        return {'Authorization': f'Token {token}'}
+
+    def search_sketchfab_models(self, query, categories=None, count=20, downloadable=True):
+        if not isinstance(query, str) or not query.strip() or not 1 <= int(count) <= 100:
+            raise HarnessError('INVALID_ARGUMENT', 'Sketchfab 搜索参数无效')
+        params = {'type': 'models', 'q': query.strip(), 'count': int(count),
+                  'downloadable': bool(downloadable), 'archives_flavours': False}
+        if categories:
+            params['categories'] = categories
+        with provider_backend.requests.get('https://api.sketchfab.com/v3/search',
+                headers=self._sketchfab_headers(), params=params, timeout=(5, 30),
+                allow_redirects=False) as response:
+            if response.status_code == 401:
+                raise HarnessError('PROVIDER_AUTH_FAILED', 'Sketchfab 凭证无效或已过期')
+            if response.status_code != 200:
+                raise HarnessError('PROVIDER_REQUEST_FAILED', 'Sketchfab 搜索失败')
+            payload = response.json()
+        if not isinstance(payload, dict) or not isinstance(payload.get('results', []), list):
+            raise HarnessError('PROVIDER_BAD_RESULT', 'Sketchfab 搜索响应无效')
+        return payload
+
+    def resolve_sketchfab_download(self, uid):
+        if not isinstance(uid, str) or not re.fullmatch(r'[A-Za-z0-9_-]{3,128}', uid):
+            raise HarnessError('INVALID_ARGUMENT', 'Sketchfab 模型 ID 无效')
+        with provider_backend.requests.get(f'https://api.sketchfab.com/v3/models/{uid}/download',
+                headers=self._sketchfab_headers(), timeout=(5, 30), allow_redirects=False) as response:
+            if response.status_code == 401:
+                raise HarnessError('PROVIDER_AUTH_FAILED', 'Sketchfab 凭证无效或已过期')
+            if response.status_code != 200:
+                raise HarnessError('PROVIDER_REQUEST_FAILED', 'Sketchfab 下载地址解析失败')
+            payload = response.json()
+        gltf = payload.get('gltf') if isinstance(payload, dict) else None
+        if not isinstance(gltf, dict) or not isinstance(gltf.get('url'), str):
+            raise HarnessError('PROVIDER_RESULT_UNAVAILABLE', '该模型没有可下载的 glTF')
+        return {'providerId': 'sketchfab', 'url': gltf['url'], 'filename': f'{uid}.zip'}
 
     def _rodin_submit(self, url, scheme, **payload):
         key = self._get_hyper3d_api_key()
@@ -257,22 +346,9 @@ class ProviderEngine(provider_backend.BlenderMCPServer):
     def _hunyuan_request(self, action, data, profile):
         secret_id = self._get_config_value('', 'hunyuan3d_secret_id')
         secret_key = self._get_config_value('', 'hunyuan3d_secret_key')
-        if not secret_id or not secret_key:
-            raise HarnessError('PROVIDER_CONFIGURATION_REQUIRED', '混元官方凭证未配置')
-        headers, endpoint = self.get_tencent_cloud_sign_headers('POST', '/', {
-            'Action': action, 'Version': profile['version'], 'Region': profile['region']},
-            data, profile['service'], profile['region'], secret_id, secret_key)
-        with provider_backend.requests.post(endpoint, headers=headers, data=json.dumps(data),
-                timeout=(5, 30), allow_redirects=False) as response:
-            if response.status_code != 200:
-                raise HarnessError('PROVIDER_REQUEST_FAILED', '混元官方请求失败；提交结果未知时不要自动重试')
-            result = response.json()
-        if (not isinstance(result, dict) or not isinstance(result.get('Response'), dict)
-                or result['Response'].get('Error')):
-            raise HarnessError('PROVIDER_REQUEST_FAILED', '混元官方返回错误，请检查参数、凭证和任务状态')
-        return result
+        return invoke_hunyuan_sdk(action, data, profile, secret_id, secret_key)
 
-    def create_hunyuan_job_main_site(self, text_prompt=None, image=None):
+    def create_hunyuan_job_main_site(self, text_prompt=None, image=None, task_type=None):
         """有界提交；本地参考图必须经过当前授权素材根校验。"""
         if bool(text_prompt) == bool(image):
             raise HarnessError('INVALID_ARGUMENT', '提示词和参考图必须且只能提供一项')
@@ -302,26 +378,58 @@ class ProviderEngine(provider_backend.BlenderMCPServer):
                 if not (raw.startswith(b'\x89PNG\r\n\x1a\n') or raw.startswith(b'\xff\xd8\xff')):
                     raise HarnessError('INVALID_ARGUMENT', '参考图必须为 PNG 或 JPEG')
                 fields['ImageBase64'] = base64.b64encode(raw).decode('ascii')
-        profile = provider_backend.hunyuan_api_profile(bool(self._get_config_value('', 'hunyuan3d_intl_pro')))
+        legacy = bool(self._get_config_value('', 'hunyuan3d_intl_pro'))
+        account_region = self._get_config_value('', 'hunyuan3d_account_region') or (
+            'INTERNATIONAL' if legacy else 'MAINLAND')
+        service_type = self._get_config_value('', 'hunyuan3d_service_type') or (
+            'HUNYUAN' if legacy else 'AI3D')
+        selected_task = task_type or self._get_config_value('', 'hunyuan3d_task_type') or 'PROFESSIONAL'
+        try:
+            profile = resolve_request(selected_task, account_region, service_type)
+        except ValueError as exc:
+            raise HarnessError('INVALID_ARGUMENT', str(exc)) from exc
+        if self._get_config_value('', 'hunyuan3d_auth_mode') == 'TOKENHUB_API_KEY':
+            model = resolve_tokenhub_model(selected_task)
+            tokenhub_fields = {
+                {'Prompt': 'prompt', 'ImageUrl': 'image_url', 'ImageBase64': 'image_base64'}[key]: value
+                for key, value in fields.items()
+            }
+            return submit_tokenhub_3d(
+                provider_backend.requests, model, tokenhub_fields,
+                self._get_config_value('', 'hunyuan3d_tokenhub_api_key'))
         data = {**profile['submit_body'], **fields}
         return self._hunyuan_request(profile['submit_action'], data, profile)
 
-    def poll_hunyuan_job_status_ai(self, job_id):
+    def poll_hunyuan_job_status_ai(self, job_id, task_type=None):
         if not isinstance(job_id, str) or not re.fullmatch(r'(?:job_)?[A-Za-z0-9_-]{1,128}', job_id):
             raise HarnessError('INVALID_ARGUMENT', '混元任务 ID 无效')
-        profile = provider_backend.hunyuan_api_profile(bool(self._get_config_value('', 'hunyuan3d_intl_pro')))
+        legacy = bool(self._get_config_value('', 'hunyuan3d_intl_pro'))
+        account_region = self._get_config_value('', 'hunyuan3d_account_region') or (
+            'INTERNATIONAL' if legacy else 'MAINLAND')
+        service_type = self._get_config_value('', 'hunyuan3d_service_type') or (
+            'HUNYUAN' if legacy else 'AI3D')
+        selected_task = task_type or self._get_config_value('', 'hunyuan3d_task_type') or 'PROFESSIONAL'
+        try:
+            if self._get_config_value('', 'hunyuan3d_auth_mode') == 'TOKENHUB_API_KEY':
+                return query_tokenhub_3d(
+                    provider_backend.requests, resolve_tokenhub_model(selected_task),
+                    job_id.removeprefix('job_'),
+                    self._get_config_value('', 'hunyuan3d_tokenhub_api_key'))
+            profile = resolve_request(selected_task, account_region, service_type)
+        except ValueError as exc:
+            raise HarnessError('INVALID_ARGUMENT', str(exc)) from exc
         return self._hunyuan_request(profile['query_action'], {'JobId': job_id.removeprefix('job_')}, profile)
 
     def ping(self):
         return {'pong': True}
 
-    def resolve_hunyuan_asset(self, job_id):
+    def resolve_hunyuan_asset(self, job_id, task_type=None):
         """只解析官方任务结果；下载仍由授权目录守卫执行，不直接导入。"""
         if not isinstance(job_id, str) or not re.fullmatch(r'(?:job_)?[A-Za-z0-9_-]{1,128}', job_id):
             raise HarnessError('INVALID_ARGUMENT', '混元任务 ID 无效')
         if self._get_config_value('', 'hunyuan3d_mode') != 'OFFICIAL_API':
             raise HarnessError('INVALID_ARGUMENT', '本地混元结果暂不支持官方任务引用下载')
-        result = self.poll_hunyuan_job_status(job_id=job_id)
+        result = self.poll_hunyuan_job_status_ai(job_id=job_id, task_type=task_type)
         response = result.get('Response', {}) if isinstance(result, dict) else {}
         if (not isinstance(response, dict) or response.get('Error') or response.get('ErrorCode')
                 or response.get('Status') != 'DONE'):
@@ -366,7 +474,7 @@ class ProviderEngine(provider_backend.BlenderMCPServer):
         if not isinstance(uid, str) or not re.fullmatch(r'[A-Za-z0-9_-]{3,128}', uid):
             raise HarnessError('INVALID_ARGUMENT', 'Sketchfab 模型 ID 无效')
         with provider_backend.requests.get(f'https://api.sketchfab.com/v3/models/{uid}',
-                headers={'Authorization': f'Token {self._get_config_value("", "sketchfab_api_key")}'},
+                headers=self._sketchfab_headers(),
                 timeout=(5, 20), allow_redirects=False) as response:
             if response.status_code != 200:
                 raise HarnessError('PROVIDER_REQUEST_FAILED', '无法读取 Sketchfab 模型信息')
@@ -447,14 +555,19 @@ def _submission_reference(result):
     return reference
 
 
-def _capture_official_submission(command, preferences, approved_asset_roots):
+def _task_reference(result, command, settings):
+    reference = _submission_reference(result)
+    if command == 'create_hunyuan_job':
+        reference['task_type'] = settings['hunyuan3d_task_type']
+    return reference
+
+
+def _capture_official_submission(command, preferences, approved_asset_roots, params=None):
     """在 Blender 主线程捕获普通值；返回的回调禁止再读取 bpy。"""
     settings = {
         'hyper3d_api_key': str(getattr(preferences, 'hyper3d_api_key', '')),
         'hyper3d_mode': str(getattr(preferences, 'hyper3d_mode', 'MAIN_SITE')),
-        'hunyuan3d_secret_id': str(getattr(preferences, 'hunyuan3d_secret_id', '')),
-        'hunyuan3d_secret_key': str(getattr(preferences, 'hunyuan3d_secret_key', '')),
-        'hunyuan3d_intl_pro': bool(getattr(preferences, 'hunyuan3d_intl_pro', False)),
+        **_hunyuan_settings(preferences, task_type=(params or {}).get('task_type')),
     }
     engine = ProviderEngine()
     engine._approved_asset_roots = tuple(approved_asset_roots)
@@ -476,12 +589,10 @@ def _capture_official_submission(command, preferences, approved_asset_roots):
 def _capture_network_query(command, params, preferences):
     """复制查询配置和参数；返回的回调禁止读取 Blender 上下文。"""
     settings = {
-        'sketchfab_api_key': str(getattr(preferences, 'sketchfab_api_key', '')),
+        **_sketchfab_settings(preferences),
         'hyper3d_api_key': str(getattr(preferences, 'hyper3d_api_key', '')),
         'hyper3d_mode': str(getattr(preferences, 'hyper3d_mode', 'MAIN_SITE')),
-        'hunyuan3d_secret_id': str(getattr(preferences, 'hunyuan3d_secret_id', '')),
-        'hunyuan3d_secret_key': str(getattr(preferences, 'hunyuan3d_secret_key', '')),
-        'hunyuan3d_intl_pro': bool(getattr(preferences, 'hunyuan3d_intl_pro', False)),
+        **_hunyuan_settings(preferences, task_type=params.get('task_type')),
     }
     engine = ProviderEngine()
     engine._get_config_value = lambda _scene, pref_attr=None, _env=None: settings.get(pref_attr, '')
@@ -541,8 +652,9 @@ def execute(arguments, *, approved_asset_roots=()):
         from .harness.provider_submission import ProviderSubmitter
         from .harness.provider_tasks import get_provider_task_registry
         tasks = get_provider_task_registry()
-        method, settings = _capture_official_submission(command, preferences, approved_asset_roots)
         params = dict(arguments['params'])
+        method, settings = _capture_official_submission(
+            command, preferences, approved_asset_roots, params)
         preferred_keys = (('subscription_key',) if command == 'create_rodin_job'
                           and settings['hyper3d_mode'] == 'MAIN_SITE'
                           else ('request_id',) if command == 'create_rodin_job'
@@ -555,7 +667,8 @@ def execute(arguments, *, approved_asset_roots=()):
                 'operation': 'update', 'providerId': arguments['providerId'],
                 'taskId': local_id, 'state': 'generating',
                 'stage': '已提交 · 等待生成', 'statusText': '已提交 · 等待生成',
-                'remoteTaskId': remote_id, 'resultReference': _submission_reference(result),
+                'remoteTaskId': remote_id,
+                'resultReference': _task_reference(result, command, settings),
                 'cancelSupported': False,
             })
             try:
@@ -567,7 +680,8 @@ def execute(arguments, *, approved_asset_roots=()):
                     'taskId': current['taskId'], 'state': 'generating',
                     'statusText': '已提交 · 自动查询未启动',
                     'message': '请通过任务查询检查结果；不要重复提交生成',
-                    'remoteTaskId': remote_id, 'resultReference': _submission_reference(result),
+                    'remoteTaskId': remote_id,
+                    'resultReference': _task_reference(result, command, settings),
                     'cancelSupported': False,
                 })
 
@@ -594,7 +708,10 @@ def execute(arguments, *, approved_asset_roots=()):
     # 仅同步无凭证的平台选项；不复制 Key 到 .blend。
     scene.blendermcp_hyper3d_mode = preferences.hyper3d_mode
     scene.blendermcp_hunyuan3d_mode = preferences.hunyuan3d_mode
-    scene.blendermcp_hunyuan3d_intl_pro = preferences.hunyuan3d_intl_pro
+    selection = _hunyuan_settings(preferences)
+    scene.blendermcp_hunyuan3d_account_region = selection['hunyuan3d_account_region']
+    scene.blendermcp_hunyuan3d_service_type = selection['hunyuan3d_service_type']
+    scene.blendermcp_hunyuan3d_task_type = selection['hunyuan3d_task_type']
     try:
         engine = ProviderEngine()
         engine._approved_asset_roots = tuple(approved_asset_roots)
@@ -635,7 +752,9 @@ def register():
         bpy.app.timers.register(_redraw_provider_tasks, first_interval=0.5, persistent=True)
     bpy.types.Scene.blendermcp_hyper3d_mode = bpy.props.StringProperty(default='MAIN_SITE', options={'SKIP_SAVE'})
     bpy.types.Scene.blendermcp_hunyuan3d_mode = bpy.props.StringProperty(default='OFFICIAL_API', options={'SKIP_SAVE'})
-    bpy.types.Scene.blendermcp_hunyuan3d_intl_pro = bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'})
+    bpy.types.Scene.blendermcp_hunyuan3d_account_region = bpy.props.StringProperty(default='MAINLAND', options={'SKIP_SAVE'})
+    bpy.types.Scene.blendermcp_hunyuan3d_service_type = bpy.props.StringProperty(default='AI3D', options={'SKIP_SAVE'})
+    bpy.types.Scene.blendermcp_hunyuan3d_task_type = bpy.props.StringProperty(default='PROFESSIONAL', options={'SKIP_SAVE'})
     bpy.types.Scene.blendermcp_hunyuan3d_octree_resolution = bpy.props.IntProperty(default=256)
     bpy.types.Scene.blendermcp_hunyuan3d_num_inference_steps = bpy.props.IntProperty(default=20)
     bpy.types.Scene.blendermcp_hunyuan3d_guidance_scale = bpy.props.FloatProperty(default=5.5)
@@ -663,13 +782,11 @@ def capture_asset_resolver(provider_id, params):
         raise HarnessError('HYPER3D_CLIENT_MCP_REQUIRED',
             'OAuth 模式的结果链接由客户端 hyper3d MCP 提供，请使用受控生成结果导入')
     settings = {
-        'sketchfab_api_key': str(getattr(preferences, 'sketchfab_api_key', '')),
+        **_sketchfab_settings(preferences),
         'hyper3d_api_key': str(getattr(preferences, 'hyper3d_api_key', '')),
         'hyper3d_mode': str(getattr(preferences, 'hyper3d_mode', 'MAIN_SITE')),
-        'hunyuan3d_secret_id': str(getattr(preferences, 'hunyuan3d_secret_id', '')),
-        'hunyuan3d_secret_key': str(getattr(preferences, 'hunyuan3d_secret_key', '')),
         'hunyuan3d_mode': str(getattr(preferences, 'hunyuan3d_mode', 'OFFICIAL_API')),
-        'hunyuan3d_intl_pro': bool(getattr(preferences, 'hunyuan3d_intl_pro', False)),
+        **_hunyuan_settings(preferences, task_type=params.get('task_type')),
     }
     copied = json.loads(json.dumps(params, ensure_ascii=False))
     engine = ProviderEngine()
@@ -714,7 +831,8 @@ def unregister():
     _last_task_snapshot = None
     if provider_backend.bpy.app.timers.is_registered(_redraw_provider_tasks):
         provider_backend.bpy.app.timers.unregister(_redraw_provider_tasks)
-    for name in ('hyper3d_mode', 'hunyuan3d_mode', 'hunyuan3d_intl_pro',
+    for name in ('hyper3d_mode', 'hunyuan3d_mode', 'hunyuan3d_account_region',
+                 'hunyuan3d_service_type', 'hunyuan3d_task_type',
                  'hunyuan3d_octree_resolution', 'hunyuan3d_num_inference_steps',
                  'hunyuan3d_guidance_scale', 'hunyuan3d_texture'):
         attr = 'blendermcp_' + name

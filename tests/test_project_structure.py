@@ -106,11 +106,16 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(addon_modules, [
             "__init__.py",
             "compat_io.py",
+            "hunyuan_capabilities.py",
+            "hunyuan_sdk.py",
             "hyper3d_auth.py",
             "panel.py",
             "provider_engine.py",
             "remote.py",
             "runtime.py",
+            "sketchfab_auth.py",
+            "tokenhub_3d.py",
+            "tokenhub_auth.py",
         ])
         self.assertFalse((ADDON / "harness").exists(), "harness must not be duplicated under addon/")
 
@@ -203,7 +208,11 @@ class ArchiveIntegrityTests(unittest.TestCase):
         import tomllib
 
         project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
-        self.assertEqual(project["dependencies"], ["mcp>=2.2.0,<3"])
+        self.assertEqual(project["dependencies"], [
+            "mcp>=2.2.0,<3",
+            "tencentcloud-sdk-python-ai3d==3.1.57",
+            "tencentcloud-sdk-python-common==3.1.57",
+        ])
         self.assertEqual(project["requires-python"], ">=3.11,<3.14")
 
 

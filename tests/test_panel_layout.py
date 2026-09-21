@@ -105,7 +105,53 @@ class PanelLayoutTests(unittest.TestCase):
                         source.index('text=provider["label"]'))
         self.assertIn('toggle.alignment = "LEFT"', source)
         self.assertIn('toggle.ui_units_x = 1.2', source)
-        self.assertIn('if provider["state"] in {"configuration_required", "error", "unavailable"}:', source)
+        self.assertIn('provider["state"] in {"configuration_required", "error", "unavailable"}', source)
+        self.assertIn('and not hyper3d_provider', source)
+
+    def test_hyper3d_oauth_is_visible_on_model_card(self):
+        source = ast.get_source_segment(SOURCE.read_text(), next(
+            node for node in tree.body if isinstance(node, ast.FunctionDef)
+            and node.name == "_draw_provider_rows"))
+        self.assertIn('text="MCP OAuth"', source)
+        self.assertNotIn('免费用户：MCP OAuth', source)
+        self.assertIn('PARTMEBLENDER_OT_hyper3d_oauth.bl_idname', source)
+        self.assertIn('text="授权"', source)
+        self.assertIn('action.client = preferences.hyper3d_oauth_client', source)
+        self.assertNotIn('preferences.hyper3d_auth_mode == "MCP_OAUTH"', source)
+        self.assertIn('not hyper3d_provider', source)
+
+    def test_hyper3d_target_clients_cover_supported_agents_without_fake_cli_automation(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        for client_id, label in (("CODEX", "Codex"), ("CLAUDE", "Claude Code"),
+                                 ("ZCODE", "ZCode"), ("KIMI", "Kimi"),
+                                 ("OTHER", "其他 MCP 客户端")):
+            self.assertIn(f'("{client_id}", "{label}"', source)
+        self.assertIn('name="目标 MCP 客户端"', source)
+        self.assertIn('_HYPER3D_AUTOMATED_CLIENTS', source)
+        self.assertIn('context.window_manager.clipboard = HYPER3D_MCP_URL', source)
+        self.assertIn('"复制配置"', source)
+
+    def test_asset_authentication_copy_matches_real_integrations(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        self.assertIn('("OAUTH", "OAuth 2.0"', source)
+        self.assertIn('PARTMEBLENDER_OT_sketchfab_oauth.bl_idname', source)
+        self.assertIn('layout.prop(self, "sketchfab_client_id")', source)
+        self.assertIn('layout.prop(self, "sketchfab_redirect_uri")', source)
+        self.assertIn('Poly Pizza 当前使用 API Key', source)
+
+    def test_hunyuan_configuration_exposes_independent_tokenhub_oauth(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        self.assertIn('hunyuan3d_auth_mode', source)
+        self.assertIn('("TOKENHUB_API_KEY", "TokenHub API Key"', source)
+        self.assertIn('PARTMEBLENDER_OT_tokenhub_oauth.bl_idname', source)
+        self.assertIn('text="THCLI OAuth"', source)
+        self.assertIn('text="授权"', source)
+        dialog = source.split('elif self.provider_id == "hunyuan3d":', 1)[1].split(
+            'if self.provider_id != "hyper3d"', 1)[0]
+        self.assertIn('if self.hunyuan_auth_mode == "TENCENT_CLOUD_API"', dialog)
+        self.assertIn('layout.prop(self, "tokenhub_profile")', dialog)
+        self.assertIn('layout.prop(self, "tokenhub_site")', dialog)
+        self.assertIn('layout.prop(self, "tokenhub_api_key")', dialog)
 
     def context(self, width=562, scale=2):
         return SimpleNamespace(

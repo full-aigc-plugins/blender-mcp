@@ -16,6 +16,7 @@ authorization_command = MODULE.authorization_command
 authorization_commands = MODULE.authorization_commands
 authorization_url = MODULE.authorization_url
 AuthorizationRunner = MODULE.AuthorizationRunner
+oauth_success_page_url = MODULE.oauth_success_page_url
 inspect_client = MODULE.inspect_client
 inspect_server = MODULE.inspect_server
 sync_preferences = MODULE.sync_preferences
@@ -119,11 +120,30 @@ class Hyper3dAuthTests(unittest.TestCase):
             return Process(lines)
 
         commands = authorization_commands('CODEX', '/bin/codex', configured=False)
-        runner = AuthorizationRunner(commands, popen=popen, open_url=opened.append)
+        runner = AuthorizationRunner(
+            commands,
+            popen=popen,
+            open_url=opened.append,
+            success_url=lambda: 'file:///tmp/partme-oauth-success.html',
+        )
         runner._run()
         self.assertEqual([item[0] for item in calls], commands)
-        self.assertEqual(opened, [auth_url])
+        self.assertEqual(opened, [auth_url, 'file:///tmp/partme-oauth-success.html'])
         self.assertEqual(runner.returncode, 0)
+
+    def test_oauth_success_page_is_centered_and_contains_no_credentials(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            url = oauth_success_page_url(directory)
+            page = Path(url.removeprefix('file://')).read_text(encoding='utf-8')
+
+        self.assertIn('display:grid', page)
+        self.assertIn('place-items:center', page)
+        self.assertIn('Hyper3D MCP 授权成功', page)
+        self.assertIn('可以关闭此页面并返回 Blender', page)
+        self.assertNotIn('access_token', page.lower())
+        self.assertNotIn('refresh_token', page.lower())
 
     def test_wrong_existing_url_is_rejected_not_overwritten(self):
         run = Mock(return_value=subprocess.CompletedProcess(
@@ -171,6 +191,18 @@ class Hyper3dAuthTests(unittest.TestCase):
                 'state': 'unknown', 'statusText': '授权状态待检测'},
         )
         self.assertEqual(preferences.hyper3d_oauth_status, 'ERROR')
+
+    def test_manual_target_client_is_not_probed_as_an_automatic_cli(self):
+        preferences = SimpleNamespace(
+            hyper3d_auth_mode='MCP_OAUTH',
+            hyper3d_oauth_client='ZCODE',
+            hyper3d_oauth_status='NOT_AUTHORIZED',
+        )
+        find = Mock(side_effect=AssertionError('manual client must not be probed'))
+        status = sync_preferences(preferences, find=find, inspect=Mock())
+        self.assertEqual(status['state'], 'manual')
+        self.assertEqual(preferences.hyper3d_oauth_status, 'NOT_AUTHORIZED')
+        find.assert_not_called()
 
 
 if __name__ == '__main__':

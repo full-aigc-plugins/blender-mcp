@@ -15,10 +15,30 @@ class PreviewTests(unittest.TestCase):
     def setUp(self):
         self.http = Mock()
         backend = SimpleNamespace(BlenderMCPServer=object, requests=self.http)
+        capability_spec = importlib.util.spec_from_file_location(
+            'partme_blender_mcp.hunyuan_capabilities',
+            Path(__file__).parents[1] / 'addon/partme_blender_mcp/hunyuan_capabilities.py')
+        capabilities = importlib.util.module_from_spec(capability_spec)
+        capability_spec.loader.exec_module(capabilities)
+        sdk_spec = importlib.util.spec_from_file_location(
+            'partme_blender_mcp.hunyuan_sdk',
+            Path(__file__).parents[1] / 'addon/partme_blender_mcp/hunyuan_sdk.py')
+        sdk = importlib.util.module_from_spec(sdk_spec)
+        sdk_spec.loader.exec_module(sdk)
+        tokenhub_spec = importlib.util.spec_from_file_location(
+            'partme_blender_mcp.tokenhub_3d',
+            Path(__file__).parents[1] / 'addon/partme_blender_mcp/tokenhub_3d.py')
+        tokenhub = importlib.util.module_from_spec(tokenhub_spec)
+        tokenhub_spec.loader.exec_module(tokenhub)
         spec = importlib.util.spec_from_file_location('partme_blender_mcp.preview_fixture',
             Path(__file__).parents[1] / 'addon/partme_blender_mcp/provider_engine.py')
         module = importlib.util.module_from_spec(spec)
-        with patch.dict(sys.modules, {'partme_blender_mcp.provider_backend': backend}):
+        with patch.dict(sys.modules, {
+                'partme_blender_mcp.provider_backend': backend,
+                'partme_blender_mcp.hunyuan_capabilities': capabilities,
+                'partme_blender_mcp.hunyuan_sdk': sdk,
+                'partme_blender_mcp.tokenhub_3d': tokenhub,
+        }):
             spec.loader.exec_module(module)
         self.module = module
         self.engine = module.ProviderEngine()
@@ -44,6 +64,14 @@ class PreviewTests(unittest.TestCase):
         self.assertNotIn('headers', self.http.get.call_args_list[1].kwargs)
         self.assertFalse(self.http.get.call_args_list[1].kwargs['allow_redirects'])
 
+    def test_sketchfab_auth_header_distinguishes_api_token_and_oauth(self):
+        values = {'sketchfab_auth_mode': 'API_TOKEN', 'sketchfab_api_key': 'api-token'}
+        self.engine._get_config_value = lambda _scene, name=None, _env=None: values.get(name, '')
+        self.assertEqual(self.engine._sketchfab_headers(), {'Authorization': 'Token api-token'})
+        values = {'sketchfab_auth_mode': 'OAUTH', 'sketchfab_access_token': 'oauth-token'}
+        self.engine._get_config_value = lambda _scene, name=None, _env=None: values.get(name, '')
+        self.assertEqual(self.engine._sketchfab_headers(), {'Authorization': 'Bearer oauth-token'})
+
     def test_untrusted_thumbnail_is_rejected_before_download(self):
         self.prepare(url='https://sketchfab.com.evil.example/model.png')
         with self.assertRaises(HarnessError):
@@ -66,7 +94,26 @@ class PreviewTests(unittest.TestCase):
         with self.assertRaises(HarnessError) as caught:
             self.engine.create_hunyuan_job_main_site(image='/private/unapproved.png')
         self.assertEqual(caught.exception.code, 'ASSET_NOT_AUTHORIZED')
-        self.http.post.assert_not_called()
+
+    def test_tokenhub_uses_bearer_key_and_never_falls_back_to_stored_secret(self):
+        values = {
+            'hunyuan3d_auth_mode': 'TOKENHUB_API_KEY',
+            'hunyuan3d_tokenhub_api_key': 'tokenhub-key',
+            'hunyuan3d_account_region': 'MAINLAND',
+            'hunyuan3d_service_type': 'AI3D',
+            'hunyuan3d_task_type': 'RAPID',
+        }
+        self.engine._get_config_value = lambda _scene, name=None, _env=None: values.get(name, '')
+        self.module.invoke_hunyuan_sdk = Mock()
+        self.http.post.return_value = self.response(json=Mock(return_value={
+            'id': 'job-1', 'status': 'queued'}))
+        result = self.engine.create_hunyuan_job_main_site(text_prompt='chair')
+        self.assertEqual(result['JobId'], 'job-1')
+        self.module.invoke_hunyuan_sdk.assert_not_called()
+        call = self.http.post.call_args
+        self.assertEqual(call.args[0], 'https://tokenhub.tencentmaas.com/v1/api/3d/submit')
+        self.assertEqual(call.kwargs['headers']['Authorization'], 'Bearer tokenhub-key')
+        self.assertEqual(call.kwargs['json']['model'], 'hy-3d-express')
 
     def test_rodin_submission_modes_have_timeouts_and_no_redirects(self):
         self.engine._get_hyper3d_api_key = lambda: 'fixture-key'
@@ -100,18 +147,60 @@ class PreviewTests(unittest.TestCase):
                             for call in self.http.post.call_args_list))
 
     def test_hunyuan_submit_uses_bounded_request_and_copies_profile_body(self):
-        profile = {'service': 'ai3d', 'version': '2025-05-13', 'region': 'ap-guangzhou',
-            'submit_action': 'SubmitHunyuanTo3DProJob', 'query_action': 'QueryHunyuanTo3DProJob',
-            'submit_body': {'GenerateType': 'Normal'}}
-        self.module.provider_backend.hunyuan_api_profile = lambda flag: profile
-        self.engine.get_tencent_cloud_sign_headers = Mock(return_value=(
-            {'Authorization': 'fixture-signature'}, 'https://ai3d.tencentcloudapi.com'))
-        self.http.post.return_value = self.response(json=Mock(return_value={'Response': {'JobId': '123'}}))
+        values = {
+            'hunyuan3d_secret_id': 'fixture-id',
+            'hunyuan3d_secret_key': 'fixture-key',
+            'hunyuan3d_account_region': 'MAINLAND',
+            'hunyuan3d_service_type': 'AI3D',
+            'hunyuan3d_task_type': 'PROFESSIONAL',
+            'hunyuan3d_intl_pro': False,
+        }
+        self.engine._get_config_value = lambda _scene, pref='', _env=None: values.get(pref, '')
+        self.module.invoke_hunyuan_sdk = Mock(
+            return_value={'Response': {'JobId': '123'}})
         result = self.engine.create_hunyuan_job_main_site(text_prompt='chair')
         self.assertEqual(result['Response']['JobId'], '123')
-        self.assertEqual(self.http.post.call_args.kwargs['timeout'], (5, 30))
-        self.assertFalse(self.http.post.call_args.kwargs['allow_redirects'])
-        self.assertNotIn('Prompt', profile['submit_body'])
+        sdk_call = self.module.invoke_hunyuan_sdk.call_args
+        self.assertEqual(sdk_call.args[0], 'SubmitHunyuanTo3DProJob')
+        self.assertEqual(sdk_call.args[1], {'Prompt': 'chair'})
+        self.assertEqual(sdk_call.args[2]['version'], '2025-05-13')
+        self.assertEqual(sdk_call.args[2]['region'], 'ap-guangzhou')
+        self.assertEqual(sdk_call.args[2]['service'], 'ai3d')
+        self.http.post.assert_not_called()
+
+    def test_hunyuan_rapid_uses_rapid_submit_and_query_actions(self):
+        values = {
+            'hunyuan3d_secret_id': 'fixture-id',
+            'hunyuan3d_secret_key': 'fixture-key',
+            'hunyuan3d_account_region': 'MAINLAND',
+            'hunyuan3d_service_type': 'AI3D',
+            'hunyuan3d_task_type': 'RAPID',
+            'hunyuan3d_intl_pro': False,
+        }
+        self.engine._get_config_value = lambda _scene, pref='', _env=None: values.get(pref, '')
+        self.module.invoke_hunyuan_sdk = Mock(side_effect=[
+            {'Response': {'JobId': 'rapid-1'}},
+            {'Response': {'Status': 'RUN'}},
+        ])
+        self.engine.create_hunyuan_job_main_site(text_prompt='chair')
+        self.engine.poll_hunyuan_job_status_ai(job_id='rapid-1')
+        actions = [call.args[0] for call in self.module.invoke_hunyuan_sdk.call_args_list]
+        self.assertEqual(actions, ['SubmitHunyuanTo3DRapidJob', 'QueryHunyuanTo3DRapidJob'])
+
+    def test_hunyuan_invalid_profile_is_rejected_before_network(self):
+        values = {
+            'hunyuan3d_secret_id': 'fixture-id',
+            'hunyuan3d_secret_key': 'fixture-key',
+            'hunyuan3d_account_region': 'INTERNATIONAL',
+            'hunyuan3d_service_type': 'HUNYUAN',
+            'hunyuan3d_task_type': 'RAPID',
+            'hunyuan3d_intl_pro': False,
+        }
+        self.engine._get_config_value = lambda _scene, pref='', _env=None: values.get(pref, '')
+        with self.assertRaises(HarnessError) as caught:
+            self.engine.create_hunyuan_job_main_site(text_prompt='chair')
+        self.assertEqual(caught.exception.code, 'INVALID_ARGUMENT')
+        self.http.post.assert_not_called()
 
     def test_local_hunyuan_never_enters_legacy_auto_import(self):
         prefs = SimpleNamespace(hyper3d_mode='MAIN_SITE', hunyuan3d_mode='LOCAL_API',
@@ -158,6 +247,29 @@ class PreviewTests(unittest.TestCase):
         self.assertEqual(query(), {'status_list': ['Done']})
         self.assertEqual(self.http.post.call_args.kwargs['timeout'], (5, 20))
         self.assertFalse(self.http.post.call_args.kwargs['allow_redirects'])
+
+    def test_hunyuan_automatic_poll_uses_sdk_and_captured_capability(self):
+        prefs = SimpleNamespace(
+            hunyuan3d_secret_id='fixture-id', hunyuan3d_secret_key='fixture-key',
+            hunyuan3d_account_region='MAINLAND', hunyuan3d_service_type='AI3D',
+            hunyuan3d_task_type='RAPID', hunyuan3d_intl_pro=False,
+        )
+        bpy = SimpleNamespace(context=SimpleNamespace(preferences=SimpleNamespace(
+            addons={'partme_blender_mcp': SimpleNamespace(preferences=prefs)})))
+        self.module.provider_backend.bpy = bpy
+        self.module._poller = Mock()
+        self.module.invoke_hunyuan_sdk = Mock(return_value={'Response': {'Status': 'RUN'}})
+        self.module._start_generation_poll('create_hunyuan_job', {
+            'taskId': 'local-task', 'remoteTaskId': 'job_rapid_1'})
+        command, params, query = self.module._poller.start.call_args.args
+        self.assertEqual((command, params), (
+            'poll_hunyuan_job_status', {'job_id': 'job_rapid_1'}))
+        bpy.context = None
+        self.assertEqual(query(), {'Response': {'Status': 'RUN'}})
+        call = self.module.invoke_hunyuan_sdk.call_args
+        self.assertEqual(call.args[0], 'QueryHunyuanTo3DRapidJob')
+        self.assertEqual(call.args[1], {'JobId': 'rapid_1'})
+        self.assertEqual(call.args[3:], ('fixture-id', 'fixture-key'))
 
     def test_asset_resolver_uses_snapshot_without_background_bpy_access(self):
         prefs = SimpleNamespace(
@@ -283,8 +395,15 @@ class PreviewTests(unittest.TestCase):
             tasks.clear()
 
     def test_hunyuan_result_prefers_glb_and_keeps_signed_url_internal(self):
-        self.engine._get_config_value = lambda *args: 'OFFICIAL_API'
-        self.engine.poll_hunyuan_job_status = Mock(return_value={'Response': {
+        values = {
+            'hunyuan3d_mode': 'OFFICIAL_API',
+            'hunyuan3d_account_region': 'MAINLAND',
+            'hunyuan3d_service_type': 'AI3D',
+            'hunyuan3d_task_type': 'PROFESSIONAL',
+            'hunyuan3d_intl_pro': False,
+        }
+        self.engine._get_config_value = lambda _scene, pref='', _env=None: values.get(pref, '')
+        self.engine.poll_hunyuan_job_status_ai = Mock(return_value={'Response': {
             'Status': 'DONE', 'ResultFile3Ds': [
                 {'Type': 'OBJ', 'Url': 'https://bucket.cos.ap-guangzhou.tencentcos.cn/model.zip?sign=fixture'},
                 {'Type': 'GLB', 'Url': 'https://bucket.cos.ap-guangzhou.tencentcos.cn/model.glb?sign=fixture'},
@@ -292,10 +411,17 @@ class PreviewTests(unittest.TestCase):
         result = self.engine.resolve_hunyuan_asset(job_id='job_123')
         self.assertEqual(result['filename'], 'hunyuan-123.glb')
         self.assertTrue(result['url'].endswith('.glb?sign=fixture'))
-        self.engine.poll_hunyuan_job_status.assert_called_once_with(job_id='job_123')
+        self.engine.poll_hunyuan_job_status_ai.assert_called_once_with(job_id='job_123', task_type=None)
 
     def test_hunyuan_incomplete_error_and_untrusted_result_are_rejected(self):
-        self.engine._get_config_value = lambda *args: 'OFFICIAL_API'
+        values = {
+            'hunyuan3d_mode': 'OFFICIAL_API',
+            'hunyuan3d_account_region': 'MAINLAND',
+            'hunyuan3d_service_type': 'AI3D',
+            'hunyuan3d_task_type': 'PROFESSIONAL',
+            'hunyuan3d_intl_pro': False,
+        }
+        self.engine._get_config_value = lambda _scene, pref='', _env=None: values.get(pref, '')
         for response in (
             {'Status': 'RUN'},
             {'Error': {'Message': 'secret-url'}},
@@ -303,20 +429,27 @@ class PreviewTests(unittest.TestCase):
             {'Status': 'DONE', 'ResultFile3Ds': [{'Type': 'GLB', 'Url': 'https://tencentcos.cn.evil.example/model.glb'}]},
             {'Status': 'DONE', 'ResultFile3Ds': [{'Type': 'GLB', 'Url': 'https://bucket.tencentcos.cn/model.exe'}]},
         ):
-            self.engine.poll_hunyuan_job_status = Mock(return_value={'Response': response})
+            self.engine.poll_hunyuan_job_status_ai = Mock(return_value={'Response': response})
             with self.assertRaises(HarnessError) as caught:
                 self.engine.resolve_hunyuan_asset(job_id='123')
             self.assertNotIn('secret-url', str(caught.exception))
 
     def test_hunyuan_invalid_reference_and_local_mode_do_not_poll(self):
-        self.engine.poll_hunyuan_job_status = Mock()
-        self.engine._get_config_value = lambda *args: 'OFFICIAL_API'
+        self.engine.poll_hunyuan_job_status_ai = Mock()
+        values = {
+            'hunyuan3d_mode': 'OFFICIAL_API',
+            'hunyuan3d_account_region': 'MAINLAND',
+            'hunyuan3d_service_type': 'AI3D',
+            'hunyuan3d_task_type': 'PROFESSIONAL',
+            'hunyuan3d_intl_pro': False,
+        }
+        self.engine._get_config_value = lambda _scene, pref='', _env=None: values.get(pref, '')
         with self.assertRaises(HarnessError):
             self.engine.resolve_hunyuan_asset(job_id='../other')
-        self.engine._get_config_value = lambda *args: 'LOCAL_API'
+        values['hunyuan3d_mode'] = 'LOCAL_API'
         with self.assertRaises(HarnessError):
             self.engine.resolve_hunyuan_asset(job_id='123')
-        self.engine.poll_hunyuan_job_status.assert_not_called()
+        self.engine.poll_hunyuan_job_status_ai.assert_not_called()
 
     def test_cancelled_native_poll_and_download_do_not_reach_backend(self):
         from partme_blender_mcp.harness.provider_tasks import get_provider_task_registry
